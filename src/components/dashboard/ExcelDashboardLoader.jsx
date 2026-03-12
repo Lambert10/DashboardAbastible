@@ -2088,6 +2088,7 @@ function ExcelDashboardLoader() {
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false)
   const [isLoadingSnapshotDay, setIsLoadingSnapshotDay] = useState(false)
   const [dataSourceMode, setDataSourceMode] = useState('live')
+  const [isLoaderPanelCollapsed, setIsLoaderPanelCollapsed] = useState(false)
   const [saveNotice, setSaveNotice] = useState('')
   const [previousDataProfile, setPreviousDataProfile] = useState(null)
   const [questionAnswers, setQuestionAnswers] = useState({})
@@ -2872,10 +2873,38 @@ function ExcelDashboardLoader() {
     isValidDayKey(snapshotDayKey) && selectedDayHasSnapshot
 
   return (
-    <div className="excel-loader-layout">
-      <section className="excel-loader-panel">
-        <h2>Cargar Excel</h2>
-        <p>Dashboard por Grupo usando Etapa e ID Proveedor.</p>
+    <div
+      className={`excel-loader-layout ${
+        isLoaderPanelCollapsed ? 'excel-loader-layout--panel-collapsed' : ''
+      }`}
+    >
+      <section
+        className={`excel-loader-panel ${
+          isLoaderPanelCollapsed ? 'excel-loader-panel--collapsed' : ''
+        }`}
+      >
+        <div className="excel-loader-panel__head">
+          <div>
+            <h2>{isLoaderPanelCollapsed ? 'Carga' : 'Cargar Excel'}</h2>
+            {!isLoaderPanelCollapsed ? (
+              <p>Dashboard por Grupo usando Etapa e ID Proveedor.</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="excel-loader-panel__toggle"
+            onClick={() => setIsLoaderPanelCollapsed((previous) => !previous)}
+            aria-label={
+              isLoaderPanelCollapsed ? 'Expandir panel de carga' : 'Colapsar panel de carga'
+            }
+            title={isLoaderPanelCollapsed ? 'Expandir panel' : 'Colapsar hacia la izquierda'}
+          >
+            {isLoaderPanelCollapsed ? '>' : '<'}
+          </button>
+        </div>
+
+        {!isLoaderPanelCollapsed ? (
+          <>
 
         <div className="excel-loader-source">
           <h3>Streak API</h3>
@@ -3190,6 +3219,8 @@ function ExcelDashboardLoader() {
         ) : null}
 
         {error ? <p className="excel-loader-error">{error}</p> : null}
+          </>
+        ) : null}
       </section>
 
       <ExecutiveDashboard
