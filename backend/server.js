@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import cors from 'cors'
 import Database from 'better-sqlite3'
 import express from 'express'
+import pg from 'pg'
 
 const PORT = Number(process.env.PORT ?? process.env.API_PORT ?? 4011)
 const MAX_DAILY_HISTORY_RECORDS = 730
@@ -22,9 +23,17 @@ const DEFAULT_DASHBOARD_LEGACY_MIN_TOTAL_PROVIDERS = 3000
 const KNOWN_TOTAL_ANOMALIES = new Set(['2026-03-06:1419'])
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const { Pool } = pg
+const databaseUrl = String(process.env.DATABASE_URL ?? '').trim()
+const usePostgres = Boolean(databaseUrl)
 const dataDirectoryPath = path.join(__dirname, 'data')
 const defaultDatabasePath = path.join(dataDirectoryPath, 'dashboard-history.sqlite')
 const requestedDatabasePath = String(process.env.DASHBOARD_DB_PATH ?? '').trim() || defaultDatabasePath
+
+let databasePath = ''
+let database = null
+let pgPool = null
+let storageLabel = ''
 
 function resolveDatabasePath(requestedPath) {
   const fallbackDatabasePath = path.join(os.tmpdir(), 'dashboard-history.sqlite')
@@ -45,204 +54,281 @@ function resolveDatabasePath(requestedPath) {
   }
 }
 
-const databasePath = resolveDatabasePath(requestedDatabasePath)
-const database = new Database(databasePath)
-database.pragma('journal_mode = WAL')
-database.exec(`
-  CREATE TABLE IF NOT EXISTS daily_history_snapshots (
-    day_key TEXT PRIMARY KEY,
-    file_name TEXT NOT NULL DEFAULT '',
-    sheet_name TEXT NOT NULL DEFAULT '',
-    total_providers INTEGER NOT NULL DEFAULT 0,
-    contacted_providers INTEGER NOT NULL DEFAULT 0,
-    trained_providers INTEGER NOT NULL DEFAULT 0,
-    enrolled_providers INTEGER NOT NULL DEFAULT 0,
-    rescued_providers INTEGER NOT NULL DEFAULT 0,
-    cited_providers INTEGER NOT NULL DEFAULT 0,
-    training_days_count INTEGER NOT NULL DEFAULT 0,
-    contact_rate REAL NOT NULL DEFAULT 0,
-    trained_rate REAL NOT NULL DEFAULT 0,
-    rescue_rate REAL NOT NULL DEFAULT 0,
-    saved_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-  )
-`)
+function resolvePostgresSslConfig() {
+  const mode = String(process.env.PGSSLMODE ?? '').trim().toLowerCase()
+  if (mode === 'disable') {
+    return false
+  }
 
-database.exec(`
-  CREATE TABLE IF NOT EXISTS daily_history_payloads (
-    day_key TEXT PRIMARY KEY,
-    file_name TEXT NOT NULL DEFAULT '',
-    sheet_name TEXT NOT NULL DEFAULT '',
-    headers_json TEXT NOT NULL DEFAULT '[]',
-    rows_json TEXT NOT NULL DEFAULT '[]',
-    mapping_json TEXT NOT NULL DEFAULT '{}',
-    contact_stage TEXT NOT NULL DEFAULT '',
-    trained_stage TEXT NOT NULL DEFAULT '',
-    saved_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-  )
-`)
+  if (databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')) {
+    return false
+  }
 
-const selectAllSnapshotsStatement = database.prepare(`
-  SELECT
-    day_key AS dayKey,
-    file_name AS fileName,
-    sheet_name AS sheetName,
-    total_providers AS totalProviders,
-    contacted_providers AS contactedProviders,
-    trained_providers AS trainedProviders,
-    enrolled_providers AS enrolledProviders,
-    rescued_providers AS rescuedProviders,
-    cited_providers AS citedProviders,
-    training_days_count AS trainingDaysCount,
-    contact_rate AS contactRate,
-    trained_rate AS trainedRate,
-    rescue_rate AS rescueRate,
-    saved_at AS savedAt
-  FROM daily_history_snapshots
-  ORDER BY day_key DESC
-  LIMIT ?
-`)
+  return { rejectUnauthorized: false }
+}
 
-const upsertSnapshotStatement = database.prepare(`
-  INSERT INTO daily_history_snapshots (
-    day_key,
-    file_name,
-    sheet_name,
-    total_providers,
-    contacted_providers,
-    trained_providers,
-    enrolled_providers,
-    rescued_providers,
-    cited_providers,
-    training_days_count,
-    contact_rate,
-    trained_rate,
-    rescue_rate,
-    saved_at
-  ) VALUES (
-    @dayKey,
-    @fileName,
-    @sheetName,
-    @totalProviders,
-    @contactedProviders,
-    @trainedProviders,
-    @enrolledProviders,
-    @rescuedProviders,
-    @citedProviders,
-    @trainingDaysCount,
-    @contactRate,
-    @trainedRate,
-    @rescueRate,
-    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-  )
-  ON CONFLICT(day_key) DO UPDATE SET
-    file_name = excluded.file_name,
-    sheet_name = excluded.sheet_name,
-    total_providers = excluded.total_providers,
-    contacted_providers = excluded.contacted_providers,
-    trained_providers = excluded.trained_providers,
-    enrolled_providers = excluded.enrolled_providers,
-    rescued_providers = excluded.rescued_providers,
-    cited_providers = excluded.cited_providers,
-    training_days_count = excluded.training_days_count,
-    contact_rate = excluded.contact_rate,
-    trained_rate = excluded.trained_rate,
-    rescue_rate = excluded.rescue_rate,
-    saved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-`)
+if (usePostgres) {
+  pgPool = new Pool({
+    connectionString: databaseUrl,
+    ssl: resolvePostgresSslConfig(),
+  })
+  databasePath = 'postgres'
+  storageLabel = 'postgres'
+} else {
+  databasePath = resolveDatabasePath(requestedDatabasePath)
+  database = new Database(databasePath)
+  database.pragma('journal_mode = WAL')
+  storageLabel = `sqlite:${databasePath}`
+}
 
-const insertSnapshotStatement = database.prepare(`
-  INSERT INTO daily_history_snapshots (
-    day_key,
-    file_name,
-    sheet_name,
-    total_providers,
-    contacted_providers,
-    trained_providers,
-    enrolled_providers,
-    rescued_providers,
-    cited_providers,
-    training_days_count,
-    contact_rate,
-    trained_rate,
-    rescue_rate,
-    saved_at
-  ) VALUES (
-    @dayKey,
-    @fileName,
-    @sheetName,
-    @totalProviders,
-    @contactedProviders,
-    @trainedProviders,
-    @enrolledProviders,
-    @rescuedProviders,
-    @citedProviders,
-    @trainingDaysCount,
-    @contactRate,
-    @trainedRate,
-    @rescueRate,
-    @savedAt
-  )
-`)
+let selectAllSnapshotsStatement = null
+let upsertSnapshotStatement = null
+let insertSnapshotStatement = null
+let deleteSnapshotsStatement = null
+let deletePayloadsStatement = null
+let deleteOrphanPayloadsStatement = null
+let upsertPayloadStatement = null
+let selectPayloadByDayKeyStatement = null
+let selectPayloadDayKeysStatement = null
 
-const deleteSnapshotsStatement = database.prepare('DELETE FROM daily_history_snapshots')
-const deletePayloadsStatement = database.prepare('DELETE FROM daily_history_payloads')
-const deleteOrphanPayloadsStatement = database.prepare(`
-  DELETE FROM daily_history_payloads
-  WHERE day_key NOT IN (SELECT day_key FROM daily_history_snapshots)
-`)
+function initializeSqliteStatements() {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS daily_history_snapshots (
+      day_key TEXT PRIMARY KEY,
+      file_name TEXT NOT NULL DEFAULT '',
+      sheet_name TEXT NOT NULL DEFAULT '',
+      total_providers INTEGER NOT NULL DEFAULT 0,
+      contacted_providers INTEGER NOT NULL DEFAULT 0,
+      trained_providers INTEGER NOT NULL DEFAULT 0,
+      enrolled_providers INTEGER NOT NULL DEFAULT 0,
+      rescued_providers INTEGER NOT NULL DEFAULT 0,
+      cited_providers INTEGER NOT NULL DEFAULT 0,
+      training_days_count INTEGER NOT NULL DEFAULT 0,
+      contact_rate REAL NOT NULL DEFAULT 0,
+      trained_rate REAL NOT NULL DEFAULT 0,
+      rescue_rate REAL NOT NULL DEFAULT 0,
+      saved_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )
+  `)
 
-const upsertPayloadStatement = database.prepare(`
-  INSERT INTO daily_history_payloads (
-    day_key,
-    file_name,
-    sheet_name,
-    headers_json,
-    rows_json,
-    mapping_json,
-    contact_stage,
-    trained_stage,
-    saved_at
-  ) VALUES (
-    @dayKey,
-    @fileName,
-    @sheetName,
-    @headersJson,
-    @rowsJson,
-    @mappingJson,
-    @contactStage,
-    @trainedStage,
-    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-  )
-  ON CONFLICT(day_key) DO UPDATE SET
-    file_name = excluded.file_name,
-    sheet_name = excluded.sheet_name,
-    headers_json = excluded.headers_json,
-    rows_json = excluded.rows_json,
-    mapping_json = excluded.mapping_json,
-    contact_stage = excluded.contact_stage,
-    trained_stage = excluded.trained_stage,
-    saved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-`)
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS daily_history_payloads (
+      day_key TEXT PRIMARY KEY,
+      file_name TEXT NOT NULL DEFAULT '',
+      sheet_name TEXT NOT NULL DEFAULT '',
+      headers_json TEXT NOT NULL DEFAULT '[]',
+      rows_json TEXT NOT NULL DEFAULT '[]',
+      mapping_json TEXT NOT NULL DEFAULT '{}',
+      contact_stage TEXT NOT NULL DEFAULT '',
+      trained_stage TEXT NOT NULL DEFAULT '',
+      saved_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )
+  `)
 
-const selectPayloadByDayKeyStatement = database.prepare(`
-  SELECT
-    day_key AS dayKey,
-    file_name AS fileName,
-    sheet_name AS sheetName,
-    headers_json AS headersJson,
-    rows_json AS rowsJson,
-    mapping_json AS mappingJson,
-    contact_stage AS contactStage,
-    trained_stage AS trainedStage,
-    saved_at AS savedAt
-  FROM daily_history_payloads
-  WHERE day_key = ?
-`)
+  selectAllSnapshotsStatement = database.prepare(`
+    SELECT
+      day_key AS dayKey,
+      file_name AS fileName,
+      sheet_name AS sheetName,
+      total_providers AS totalProviders,
+      contacted_providers AS contactedProviders,
+      trained_providers AS trainedProviders,
+      enrolled_providers AS enrolledProviders,
+      rescued_providers AS rescuedProviders,
+      cited_providers AS citedProviders,
+      training_days_count AS trainingDaysCount,
+      contact_rate AS contactRate,
+      trained_rate AS trainedRate,
+      rescue_rate AS rescueRate,
+      saved_at AS savedAt
+    FROM daily_history_snapshots
+    ORDER BY day_key DESC
+    LIMIT ?
+  `)
 
-const selectPayloadDayKeysStatement = database.prepare(`
-  SELECT day_key AS dayKey
-  FROM daily_history_payloads
-`)
+  upsertSnapshotStatement = database.prepare(`
+    INSERT INTO daily_history_snapshots (
+      day_key,
+      file_name,
+      sheet_name,
+      total_providers,
+      contacted_providers,
+      trained_providers,
+      enrolled_providers,
+      rescued_providers,
+      cited_providers,
+      training_days_count,
+      contact_rate,
+      trained_rate,
+      rescue_rate,
+      saved_at
+    ) VALUES (
+      @dayKey,
+      @fileName,
+      @sheetName,
+      @totalProviders,
+      @contactedProviders,
+      @trainedProviders,
+      @enrolledProviders,
+      @rescuedProviders,
+      @citedProviders,
+      @trainingDaysCount,
+      @contactRate,
+      @trainedRate,
+      @rescueRate,
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    )
+    ON CONFLICT(day_key) DO UPDATE SET
+      file_name = excluded.file_name,
+      sheet_name = excluded.sheet_name,
+      total_providers = excluded.total_providers,
+      contacted_providers = excluded.contacted_providers,
+      trained_providers = excluded.trained_providers,
+      enrolled_providers = excluded.enrolled_providers,
+      rescued_providers = excluded.rescued_providers,
+      cited_providers = excluded.cited_providers,
+      training_days_count = excluded.training_days_count,
+      contact_rate = excluded.contact_rate,
+      trained_rate = excluded.trained_rate,
+      rescue_rate = excluded.rescue_rate,
+      saved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  `)
+
+  insertSnapshotStatement = database.prepare(`
+    INSERT INTO daily_history_snapshots (
+      day_key,
+      file_name,
+      sheet_name,
+      total_providers,
+      contacted_providers,
+      trained_providers,
+      enrolled_providers,
+      rescued_providers,
+      cited_providers,
+      training_days_count,
+      contact_rate,
+      trained_rate,
+      rescue_rate,
+      saved_at
+    ) VALUES (
+      @dayKey,
+      @fileName,
+      @sheetName,
+      @totalProviders,
+      @contactedProviders,
+      @trainedProviders,
+      @enrolledProviders,
+      @rescuedProviders,
+      @citedProviders,
+      @trainingDaysCount,
+      @contactRate,
+      @trainedRate,
+      @rescueRate,
+      @savedAt
+    )
+  `)
+
+  deleteSnapshotsStatement = database.prepare('DELETE FROM daily_history_snapshots')
+  deletePayloadsStatement = database.prepare('DELETE FROM daily_history_payloads')
+  deleteOrphanPayloadsStatement = database.prepare(`
+    DELETE FROM daily_history_payloads
+    WHERE day_key NOT IN (SELECT day_key FROM daily_history_snapshots)
+  `)
+
+  upsertPayloadStatement = database.prepare(`
+    INSERT INTO daily_history_payloads (
+      day_key,
+      file_name,
+      sheet_name,
+      headers_json,
+      rows_json,
+      mapping_json,
+      contact_stage,
+      trained_stage,
+      saved_at
+    ) VALUES (
+      @dayKey,
+      @fileName,
+      @sheetName,
+      @headersJson,
+      @rowsJson,
+      @mappingJson,
+      @contactStage,
+      @trainedStage,
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    )
+    ON CONFLICT(day_key) DO UPDATE SET
+      file_name = excluded.file_name,
+      sheet_name = excluded.sheet_name,
+      headers_json = excluded.headers_json,
+      rows_json = excluded.rows_json,
+      mapping_json = excluded.mapping_json,
+      contact_stage = excluded.contact_stage,
+      trained_stage = excluded.trained_stage,
+      saved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  `)
+
+  selectPayloadByDayKeyStatement = database.prepare(`
+    SELECT
+      day_key AS dayKey,
+      file_name AS fileName,
+      sheet_name AS sheetName,
+      headers_json AS headersJson,
+      rows_json AS rowsJson,
+      mapping_json AS mappingJson,
+      contact_stage AS contactStage,
+      trained_stage AS trainedStage,
+      saved_at AS savedAt
+    FROM daily_history_payloads
+    WHERE day_key = ?
+  `)
+
+  selectPayloadDayKeysStatement = database.prepare(`
+    SELECT day_key AS dayKey
+    FROM daily_history_payloads
+  `)
+}
+
+async function initializePostgresTables() {
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS daily_history_snapshots (
+      day_key TEXT PRIMARY KEY,
+      file_name TEXT NOT NULL DEFAULT '',
+      sheet_name TEXT NOT NULL DEFAULT '',
+      total_providers INTEGER NOT NULL DEFAULT 0,
+      contacted_providers INTEGER NOT NULL DEFAULT 0,
+      trained_providers INTEGER NOT NULL DEFAULT 0,
+      enrolled_providers INTEGER NOT NULL DEFAULT 0,
+      rescued_providers INTEGER NOT NULL DEFAULT 0,
+      cited_providers INTEGER NOT NULL DEFAULT 0,
+      training_days_count INTEGER NOT NULL DEFAULT 0,
+      contact_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+      trained_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+      rescue_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS daily_history_payloads (
+      day_key TEXT PRIMARY KEY,
+      file_name TEXT NOT NULL DEFAULT '',
+      sheet_name TEXT NOT NULL DEFAULT '',
+      headers_json TEXT NOT NULL DEFAULT '[]',
+      rows_json TEXT NOT NULL DEFAULT '[]',
+      mapping_json TEXT NOT NULL DEFAULT '{}',
+      contact_stage TEXT NOT NULL DEFAULT '',
+      trained_stage TEXT NOT NULL DEFAULT '',
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+}
+
+if (usePostgres) {
+  await initializePostgresTables()
+} else {
+  initializeSqliteStatements()
+}
 
 function toSafeInteger(value) {
   const numeric = Number(value)
@@ -278,6 +364,250 @@ function isValidDayKey(dayKey) {
     parsed.getUTCMonth() + 1 === month &&
     parsed.getUTCDate() === day
   )
+}
+
+async function dbReadAllSnapshots(limit) {
+  if (usePostgres) {
+    const result = await pgPool.query(
+      `
+      SELECT
+        day_key AS "dayKey",
+        file_name AS "fileName",
+        sheet_name AS "sheetName",
+        total_providers AS "totalProviders",
+        contacted_providers AS "contactedProviders",
+        trained_providers AS "trainedProviders",
+        enrolled_providers AS "enrolledProviders",
+        rescued_providers AS "rescuedProviders",
+        cited_providers AS "citedProviders",
+        training_days_count AS "trainingDaysCount",
+        contact_rate AS "contactRate",
+        trained_rate AS "trainedRate",
+        rescue_rate AS "rescueRate",
+        saved_at AS "savedAt"
+      FROM daily_history_snapshots
+      ORDER BY day_key DESC
+      LIMIT $1
+      `,
+      [limit],
+    )
+    return result.rows
+  }
+
+  return selectAllSnapshotsStatement.all(limit)
+}
+
+async function dbUpsertSnapshot(snapshot) {
+  if (usePostgres) {
+    await pgPool.query(
+      `
+      INSERT INTO daily_history_snapshots (
+        day_key,
+        file_name,
+        sheet_name,
+        total_providers,
+        contacted_providers,
+        trained_providers,
+        enrolled_providers,
+        rescued_providers,
+        cited_providers,
+        training_days_count,
+        contact_rate,
+        trained_rate,
+        rescue_rate,
+        saved_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW()
+      )
+      ON CONFLICT(day_key) DO UPDATE SET
+        file_name = EXCLUDED.file_name,
+        sheet_name = EXCLUDED.sheet_name,
+        total_providers = EXCLUDED.total_providers,
+        contacted_providers = EXCLUDED.contacted_providers,
+        trained_providers = EXCLUDED.trained_providers,
+        enrolled_providers = EXCLUDED.enrolled_providers,
+        rescued_providers = EXCLUDED.rescued_providers,
+        cited_providers = EXCLUDED.cited_providers,
+        training_days_count = EXCLUDED.training_days_count,
+        contact_rate = EXCLUDED.contact_rate,
+        trained_rate = EXCLUDED.trained_rate,
+        rescue_rate = EXCLUDED.rescue_rate,
+        saved_at = NOW()
+      `,
+      [
+        snapshot.dayKey,
+        snapshot.fileName,
+        snapshot.sheetName,
+        snapshot.totalProviders,
+        snapshot.contactedProviders,
+        snapshot.trainedProviders,
+        snapshot.enrolledProviders,
+        snapshot.rescuedProviders,
+        snapshot.citedProviders,
+        snapshot.trainingDaysCount,
+        snapshot.contactRate,
+        snapshot.trainedRate,
+        snapshot.rescueRate,
+      ],
+    )
+    return
+  }
+
+  upsertSnapshotStatement.run(snapshot)
+}
+
+async function dbInsertSnapshot(snapshot) {
+  if (usePostgres) {
+    await pgPool.query(
+      `
+      INSERT INTO daily_history_snapshots (
+        day_key,
+        file_name,
+        sheet_name,
+        total_providers,
+        contacted_providers,
+        trained_providers,
+        enrolled_providers,
+        rescued_providers,
+        cited_providers,
+        training_days_count,
+        contact_rate,
+        trained_rate,
+        rescue_rate,
+        saved_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+      )
+      `,
+      [
+        snapshot.dayKey,
+        snapshot.fileName,
+        snapshot.sheetName,
+        snapshot.totalProviders,
+        snapshot.contactedProviders,
+        snapshot.trainedProviders,
+        snapshot.enrolledProviders,
+        snapshot.rescuedProviders,
+        snapshot.citedProviders,
+        snapshot.trainingDaysCount,
+        snapshot.contactRate,
+        snapshot.trainedRate,
+        snapshot.rescueRate,
+        snapshot.savedAt,
+      ],
+    )
+    return
+  }
+
+  insertSnapshotStatement.run(snapshot)
+}
+
+async function dbDeleteSnapshots() {
+  if (usePostgres) {
+    await pgPool.query('DELETE FROM daily_history_snapshots')
+    return
+  }
+
+  deleteSnapshotsStatement.run()
+}
+
+async function dbDeletePayloads() {
+  if (usePostgres) {
+    await pgPool.query('DELETE FROM daily_history_payloads')
+    return
+  }
+
+  deletePayloadsStatement.run()
+}
+
+async function dbDeleteOrphanPayloads() {
+  if (usePostgres) {
+    await pgPool.query(`
+      DELETE FROM daily_history_payloads
+      WHERE day_key NOT IN (SELECT day_key FROM daily_history_snapshots)
+    `)
+    return
+  }
+
+  deleteOrphanPayloadsStatement.run()
+}
+
+async function dbUpsertPayload(payload) {
+  if (usePostgres) {
+    await pgPool.query(
+      `
+      INSERT INTO daily_history_payloads (
+        day_key,
+        file_name,
+        sheet_name,
+        headers_json,
+        rows_json,
+        mapping_json,
+        contact_stage,
+        trained_stage,
+        saved_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,NOW()
+      )
+      ON CONFLICT(day_key) DO UPDATE SET
+        file_name = EXCLUDED.file_name,
+        sheet_name = EXCLUDED.sheet_name,
+        headers_json = EXCLUDED.headers_json,
+        rows_json = EXCLUDED.rows_json,
+        mapping_json = EXCLUDED.mapping_json,
+        contact_stage = EXCLUDED.contact_stage,
+        trained_stage = EXCLUDED.trained_stage,
+        saved_at = NOW()
+      `,
+      [
+        payload.dayKey,
+        payload.fileName,
+        payload.sheetName,
+        payload.headersJson,
+        payload.rowsJson,
+        payload.mappingJson,
+        payload.contactStage,
+        payload.trainedStage,
+      ],
+    )
+    return
+  }
+
+  upsertPayloadStatement.run(payload)
+}
+
+async function dbReadPayloadByDayKey(dayKey) {
+  if (usePostgres) {
+    const result = await pgPool.query(
+      `
+      SELECT
+        day_key AS "dayKey",
+        file_name AS "fileName",
+        sheet_name AS "sheetName",
+        headers_json AS "headersJson",
+        rows_json AS "rowsJson",
+        mapping_json AS "mappingJson",
+        contact_stage AS "contactStage",
+        trained_stage AS "trainedStage",
+        saved_at AS "savedAt"
+      FROM daily_history_payloads
+      WHERE day_key = $1
+      `,
+      [dayKey],
+    )
+    return result.rows[0] ?? null
+  }
+
+  return selectPayloadByDayKeyStatement.get(dayKey)
+}
+
+async function dbReadPayloadDayKeys() {
+  if (usePostgres) {
+    const result = await pgPool.query(`SELECT day_key AS "dayKey" FROM daily_history_payloads`)
+    return result.rows
+  }
+
+  return selectPayloadDayKeysStatement.all()
 }
 
 function resolveDayKeyEnv(variableName, fallbackDayKey) {
@@ -487,8 +817,8 @@ function safeParseJson(text, fallbackValue) {
   }
 }
 
-function readDashboardPayload(dayKey) {
-  const row = selectPayloadByDayKeyStatement.get(dayKey)
+async function readDashboardPayload(dayKey) {
+  const row = await dbReadPayloadByDayKey(dayKey)
   if (!row) {
     return null
   }
@@ -516,8 +846,8 @@ function readDashboardPayload(dayKey) {
   }
 }
 
-function readPayloadDayKeySet() {
-  const rows = selectPayloadDayKeysStatement.all()
+async function readPayloadDayKeySet() {
+  const rows = await dbReadPayloadDayKeys()
   return new Set(
     rows
       .map((row) => String(row.dayKey ?? ''))
@@ -525,8 +855,8 @@ function readPayloadDayKeySet() {
   )
 }
 
-function readAllSnapshots() {
-  const rows = selectAllSnapshotsStatement.all(MAX_DAILY_HISTORY_RECORDS)
+async function readAllSnapshots() {
+  const rows = await dbReadAllSnapshots(MAX_DAILY_HISTORY_RECORDS)
   return rows.reverse()
 }
 
@@ -677,9 +1007,9 @@ function needsNormalizationPersist(rawSnapshots, normalizedSnapshots) {
   return false
 }
 
-const persistNormalizedSnapshotsStatement = database.transaction((snapshots) => {
-  deleteSnapshotsStatement.run()
-  snapshots.forEach((snapshot) => {
+async function persistNormalizedSnapshots(snapshots) {
+  await dbDeleteSnapshots()
+  for (const snapshot of snapshots) {
     const {
       dayKey,
       fileName,
@@ -697,7 +1027,7 @@ const persistNormalizedSnapshotsStatement = database.transaction((snapshots) => 
       savedAt,
     } = snapshot
 
-    insertSnapshotStatement.run({
+    await dbInsertSnapshot({
       dayKey,
       fileName,
       sheetName,
@@ -713,18 +1043,18 @@ const persistNormalizedSnapshotsStatement = database.transaction((snapshots) => 
       rescueRate,
       savedAt: savedAt || new Date().toISOString(),
     })
-  })
-  deleteOrphanPayloadsStatement.run()
-})
+  }
+  await dbDeleteOrphanPayloads()
+}
 
-function readModelSnapshots() {
-  const rawSnapshots = readAllSnapshots()
+async function readModelSnapshots() {
+  const rawSnapshots = await readAllSnapshots()
   const normalizedSnapshots = normalizeSnapshotsForTimeline(rawSnapshots)
   if (needsNormalizationPersist(rawSnapshots, normalizedSnapshots)) {
-    persistNormalizedSnapshotsStatement(normalizedSnapshots)
+    await persistNormalizedSnapshots(normalizedSnapshots)
   }
 
-  const payloadDayKeys = readPayloadDayKeySet()
+  const payloadDayKeys = await readPayloadDayKeySet()
   return normalizedSnapshots.map((snapshot) => ({
     ...snapshot,
     hasPayload: payloadDayKeys.has(String(snapshot.dayKey ?? '')),
@@ -1097,16 +1427,17 @@ app.use(express.json({ limit: '25mb' }))
 app.get('/api/health', (_request, response) => {
   response.json({
     ok: true,
+    storage: storageLabel,
     databasePath,
     now: new Date().toISOString(),
   })
 })
 
-app.get('/api/daily-history', (_request, response) => {
-  response.json({ snapshots: readModelSnapshots() })
+app.get('/api/daily-history', async (_request, response) => {
+  response.json({ snapshots: await readModelSnapshots() })
 })
 
-app.put('/api/daily-history/:dayKey', (request, response) => {
+app.put('/api/daily-history/:dayKey', async (request, response) => {
   const dayKey = String(request.params.dayKey ?? '')
   if (!isValidDayKey(dayKey)) {
     response.status(400).json({ error: 'El parametro dayKey debe tener formato YYYY-MM-DD valido.' })
@@ -1114,23 +1445,23 @@ app.put('/api/daily-history/:dayKey', (request, response) => {
   }
 
   const snapshot = normalizeSnapshotPayload(dayKey, request.body)
-  upsertSnapshotStatement.run(snapshot)
+  await dbUpsertSnapshot(snapshot)
   const dashboardPayload = normalizeDashboardPayload(dayKey, request.body?.payload, snapshot)
   if (dashboardPayload) {
-    upsertPayloadStatement.run(dashboardPayload)
+    await dbUpsertPayload(dashboardPayload)
   }
 
-  response.json({ snapshots: readModelSnapshots() })
+  response.json({ snapshots: await readModelSnapshots() })
 })
 
-app.get('/api/daily-history/:dayKey/payload', (request, response) => {
+app.get('/api/daily-history/:dayKey/payload', async (request, response) => {
   const dayKey = String(request.params.dayKey ?? '')
   if (!isValidDayKey(dayKey)) {
     response.status(400).json({ error: 'El parametro dayKey debe tener formato YYYY-MM-DD valido.' })
     return
   }
 
-  const payload = readDashboardPayload(dayKey)
+  const payload = await readDashboardPayload(dayKey)
   if (!payload) {
     response.status(404).json({
       error:
@@ -1142,9 +1473,9 @@ app.get('/api/daily-history/:dayKey/payload', (request, response) => {
   response.json(payload)
 })
 
-app.delete('/api/daily-history', (_request, response) => {
-  deleteSnapshotsStatement.run()
-  deletePayloadsStatement.run()
+app.delete('/api/daily-history', async (_request, response) => {
+  await dbDeleteSnapshots()
+  await dbDeletePayloads()
   response.status(204).send()
 })
 
@@ -1221,13 +1552,24 @@ app.use((error, _request, response, next) => {
 
 const server = app.listen(PORT, () => {
   console.log(`[dashboard-api] Listening on http://localhost:${PORT}`)
-  console.log(`[dashboard-api] SQLite: ${databasePath}`)
+  console.log(`[dashboard-api] Storage: ${storageLabel}`)
 })
+
+async function closeStorage() {
+  if (usePostgres) {
+    await pgPool.end()
+    return
+  }
+
+  if (database) {
+    database.close()
+  }
+}
 
 function shutdown(signal) {
   console.log(`[dashboard-api] Shutting down (${signal})`)
-  server.close(() => {
-    database.close()
+  server.close(async () => {
+    await closeStorage()
     process.exit(0)
   })
 }

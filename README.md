@@ -20,6 +20,9 @@ npm install
 STREAK_API_KEY=tu_clave_streak
 API_PORT=4011
 VITE_API_PROXY_TARGET=http://localhost:4011
+DASHBOARD_DB_PATH=backend/data/dashboard-history.sqlite
+DATABASE_URL=
+PGSSLMODE=require
 DASHBOARD_HISTORY_START_DAY_KEY=2025-12-15
 DASHBOARD_LEGACY_END_DAY_KEY=2026-02-25
 DASHBOARD_OFFICIAL_START_DAY_KEY=2026-03-04
@@ -44,7 +47,8 @@ Terminal 2 (frontend):
 npm run dev
 ```
 
-La API guarda el historial diario en `backend/data/dashboard-history.sqlite`.
+Sin `DATABASE_URL`, la API guarda el historial diario en `backend/data/dashboard-history.sqlite` (SQLite local).
+Con `DATABASE_URL`, usa Postgres (ideal para Render + Supabase).
 Por defecto escucha en `http://localhost:4011` (puedes cambiar con `API_PORT`).
 Opcionalmente puedes cambiar `STREAK_API_BASE_URL` (por defecto `https://api.streak.com`).
 `DASHBOARD_HISTORY_START_DAY_KEY` define desde que fecha (`YYYY-MM-DD`) se muestra y normaliza el historico.
@@ -85,15 +89,29 @@ Este repo incluye [`render.yaml`](./render.yaml) para crear el servicio API.
 Variables clave en Render:
 
 - `STREAK_API_KEY` (obligatoria)
-- `DASHBOARD_DB_PATH=/var/data/dashboard-history.sqlite` (persistencia)
+- `DATABASE_URL` (obligatoria para persistencia sin disco en Render)
+- `PGSSLMODE=require`
 - `DASHBOARD_OFFICIAL_TOTAL_PROVIDERS=1420`
 - `DASHBOARD_LEGACY_END_DAY_KEY=2026-02-25`
 - `DASHBOARD_OFFICIAL_START_DAY_KEY=2026-03-04`
 
 Notas:
 
-- El backend ahora usa `PORT` automaticamente (requerido por Render).
-- Se recomienda mantener disco persistente (`/var/data`) para no perder historial.
+- El backend usa `PORT` automaticamente (requerido por Render).
+- Si `DATABASE_URL` esta definido, no necesitas Persistent Disk.
+- Si no usas `DATABASE_URL`, Render free pierde SQLite al reiniciar.
+
+### 1.1) Supabase (recomendado)
+
+1. Crea un proyecto en Supabase.
+2. En `Project Settings > Database`, copia la `Connection string` (URI).
+3. En Render, agrega:
+   - `DATABASE_URL=<tu_uri_postgres_supabase>`
+   - `PGSSLMODE=require`
+   - `STREAK_API_KEY=<tu_clave>`
+4. Redeploy y valida:
+   - `https://TU-SERVICIO.onrender.com/api/health`
+   - `https://TU-SERVICIO.onrender.com/api/daily-history`
 
 ### 2) Frontend en Netlify
 

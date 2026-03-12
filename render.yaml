@@ -2,7 +2,7 @@ services:
   - type: web
     name: dashboard-lab-api
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm install --omit=dev
     startCommand: npm run start
     healthCheckPath: /api/health
@@ -13,8 +13,10 @@ services:
         sync: false
       - key: STREAK_API_BASE_URL
         value: https://api.streak.com
-      - key: DASHBOARD_DB_PATH
-        value: /var/data/dashboard-history.sqlite
+      - key: DATABASE_URL
+        sync: false
+      - key: PGSSLMODE
+        value: require
       - key: DASHBOARD_HISTORY_START_DAY_KEY
         value: 2025-12-15
       - key: DASHBOARD_LEGACY_END_DAY_KEY
@@ -27,7 +29,3 @@ services:
         value: 1
       - key: DASHBOARD_LEGACY_MIN_TOTAL_PROVIDERS
         value: 3000
-    disks:
-      - name: dashboard-db
-        mountPath: /var/data
-        sizeGB: 1
