@@ -1,0 +1,204 @@
+.evolution-history-card {
+  padding: 1.05rem;
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.5));
+  border: 1px solid rgba(113, 155, 230, 0.3);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.evolution-history-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.evolution-history-card__header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f2145;
+}
+
+.evolution-history-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.evolution-history-card__badges > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #204680;
+  background: rgba(180, 208, 255, 0.28);
+  border: 1px solid rgba(108, 149, 225, 0.35);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+}
+
+.evolution-history-card__badge-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.2rem;
+  font-size: 0.78rem;
+  color: #1f467f;
+}
+
+.evolution-history-card__badge-delta--up {
+  color: #14803c;
+}
+
+.evolution-history-card__summary {
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+  color: #466289;
+}
+
+.evolution-history-card__table {
+  margin-top: 0.7rem;
+  border: 1px solid rgba(108, 149, 225, 0.28);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.evolution-history-card__row {
+  display: grid;
+  grid-template-columns: 1.1fr repeat(7, minmax(70px, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.42rem 0.58rem;
+  font-size: 0.81rem;
+  color: #274779;
+  border-bottom: 1px solid rgba(184, 201, 231, 0.35);
+}
+
+.evolution-history-card__row:last-child {
+  border-bottom: none;
+}
+
+.evolution-history-card__row > span:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.evolution-history-card__row > span:nth-child(7) {
+  text-align: center;
+  font-variant-numeric: normal;
+}
+
+.evolution-history-card__metric {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7ch;
+  align-items: center;
+  column-gap: 0.24rem;
+}
+
+.evolution-history-card__metric-value {
+  justify-self: end;
+}
+
+.evolution-history-card__metric-change {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.16rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  justify-self: end;
+}
+
+.evolution-history-card__metric-change--empty {
+  color: transparent;
+}
+
+.evolution-history-card__metric-change-placeholder {
+  visibility: hidden;
+}
+
+.evolution-history-card__metric-change--up {
+  color: #14803c;
+}
+
+.evolution-history-card__delta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.evolution-history-card__delta--up {
+  color: #14803c;
+  font-weight: 700;
+}
+
+.evolution-history-card__delta-arrow {
+  width: 0;
+  height: 0;
+  border-left: 0.24rem solid transparent;
+  border-right: 0.24rem solid transparent;
+  border-bottom: 0.4rem solid #16a34a;
+}
+
+.evolution-history-card__row--head {
+  font-size: 0.76rem;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #23467d;
+  background: rgba(202, 217, 242, 0.45);
+}
+
+.evolution-history-card__empty {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  color: #4f6b93;
+}
+
+.evolution-history-card__footer {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.evolution-history-card__btn {
+  border: 1px solid rgba(104, 147, 224, 0.55);
+  border-radius: 9px;
+  background: rgba(179, 208, 255, 0.3);
+  color: #1f467f;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.3rem 0.58rem;
+  cursor: pointer;
+}
+
+.evolution-history-card__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.evolution-history-card__btn--danger {
+  border-color: rgba(220, 112, 112, 0.55);
+  background: rgba(255, 219, 219, 0.45);
+  color: #873737;
+}
+
+@media (max-width: 980px) {
+  .evolution-history-card__header {
+    flex-direction: column;
+  }
+
+  .evolution-history-card__row {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .evolution-history-card__row--head {
+    display: none;
+  }
+
+  .evolution-history-card__row > span {
+    text-align: left !important;
+  }
+}

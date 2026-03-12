@@ -1,0 +1,367 @@
+.excel-loader-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 1rem;
+  align-items: start;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.excel-loader-panel {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.5));
+  border: 1px solid rgba(110, 153, 229, 0.32);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+  padding: 1rem 1.05rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.excel-loader-panel h2 {
+  margin: 0;
+  font-size: 1.16rem;
+  color: #0c1d40;
+  letter-spacing: 0.02em;
+}
+
+.excel-loader-panel p {
+  margin: 0.4rem 0 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.excel-loader-hint {
+  margin: -0.35rem 0 0.85rem;
+  color: #4f6ea8;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.excel-loader-mini-calendar {
+  border: 1px solid rgba(111, 148, 219, 0.35);
+  background: rgba(255, 255, 255, 0.64);
+  border-radius: 10px;
+  padding: 0.52rem;
+  margin-bottom: 0.55rem;
+}
+
+.excel-loader-mini-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.excel-loader-mini-calendar__header strong {
+  font-size: 0.8rem;
+  text-transform: capitalize;
+  color: #23467d;
+}
+
+.excel-loader-mini-calendar__nav {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 7px;
+  border: 1px solid rgba(106, 144, 214, 0.5);
+  background: rgba(243, 249, 255, 0.92);
+  color: #1f447f;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.excel-loader-mini-calendar__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.24rem;
+  margin-bottom: 0.24rem;
+}
+
+.excel-loader-mini-calendar__weekdays span {
+  text-align: center;
+  font-size: 0.68rem;
+  color: #4f6ea8;
+  font-weight: 700;
+}
+
+.excel-loader-mini-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.24rem;
+}
+
+.excel-loader-mini-calendar__legend {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+  font-size: 0.68rem;
+  color: #4f6ea8;
+}
+
+.excel-loader-mini-calendar__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.excel-loader-mini-calendar__dot {
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 159, 223, 0.42);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.excel-loader-mini-calendar__dot--snapshot {
+  border-color: rgba(30, 136, 229, 0.7);
+  background: rgba(233, 244, 255, 0.88);
+}
+
+.excel-loader-mini-calendar__dot--payload {
+  border-color: rgba(14, 116, 196, 0.9);
+  background: rgba(198, 232, 255, 0.94);
+}
+
+.excel-loader-mini-calendar__day {
+  border: 1px solid rgba(125, 159, 223, 0.42);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1f447f;
+  font-size: 0.73rem;
+  min-height: 1.56rem;
+  cursor: pointer;
+  transition: transform 110ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.excel-loader-mini-calendar__day:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(30, 64, 175, 0.12);
+}
+
+.excel-loader-mini-calendar__day--outside {
+  opacity: 0.42;
+}
+
+.excel-loader-mini-calendar__day--saved {
+  border-color: rgba(30, 136, 229, 0.7);
+  background: rgba(233, 244, 255, 0.88);
+}
+
+.excel-loader-mini-calendar__day--payload {
+  border-color: rgba(14, 116, 196, 0.9);
+  background: rgba(198, 232, 255, 0.94);
+  color: #113f75;
+  box-shadow: inset 0 0 0 1px rgba(14, 116, 196, 0.22);
+}
+
+.excel-loader-mini-calendar__day--today {
+  border-color: rgba(37, 99, 235, 0.75);
+}
+
+.excel-loader-mini-calendar__day--selected {
+  border-color: rgba(29, 78, 216, 0.95);
+  background: linear-gradient(160deg, rgba(208, 232, 255, 0.95), rgba(186, 214, 255, 0.9));
+  color: #12366d;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+
+.excel-loader-mapping {
+  margin-top: 1rem;
+  border-top: 1px solid rgba(126, 154, 204, 0.3);
+  padding-top: 1rem;
+}
+
+.excel-loader-source {
+  margin-bottom: 0.85rem;
+  border: 1px solid rgba(126, 154, 204, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.excel-loader-source h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.94rem;
+  color: #17366e;
+}
+
+.excel-loader-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.excel-loader-btn {
+  border: 1px solid #6d99dc;
+  background: linear-gradient(160deg, #f6fbff, #e8f0ff);
+  color: #20447f;
+  border-radius: 8px;
+  padding: 0.45rem 0.58rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 180ms ease, opacity 180ms ease;
+}
+
+.excel-loader-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 10px rgba(30, 64, 175, 0.12);
+}
+
+.excel-loader-btn:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.excel-loader-btn--secondary {
+  border-color: rgba(126, 154, 204, 0.55);
+  background: rgba(255, 255, 255, 0.78);
+  color: #35538a;
+}
+
+.excel-loader-mapping h3 {
+  margin: 0 0 0.7rem;
+  font-size: 1rem;
+  color: #122858;
+}
+
+.excel-loader-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.7rem;
+}
+
+.excel-loader-field span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #35538a;
+  letter-spacing: 0.01em;
+}
+
+.excel-loader-field input,
+.excel-loader-field select {
+  width: 100%;
+  border: 1px solid rgba(132, 164, 224, 0.5);
+  border-radius: 8px;
+  padding: 0.48rem 0.58rem;
+  font-size: 0.9rem;
+  color: #10254f;
+  background: rgba(255, 255, 255, 0.72);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.excel-loader-field input:focus,
+.excel-loader-field select:focus {
+  outline: none;
+  border-color: rgba(76, 148, 255, 0.85);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.excel-loader-error {
+  margin: 0.8rem 0 0;
+  font-size: 0.85rem;
+  color: #b91c1c;
+}
+
+.excel-loader-success {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  color: #166534;
+}
+
+.excel-loader-validation {
+  margin-top: 0.65rem;
+  border-radius: 8px;
+  padding: 0.55rem 0.62rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.excel-loader-validation strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.excel-loader-validation ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.excel-loader-validation--error {
+  border: 1px solid rgba(185, 28, 28, 0.3);
+  background: rgba(254, 226, 226, 0.65);
+  color: #7f1d1d;
+}
+
+.excel-loader-validation--warn {
+  border: 1px solid rgba(217, 119, 6, 0.32);
+  background: rgba(254, 243, 199, 0.65);
+  color: #92400e;
+}
+
+.excel-loader-audit {
+  margin-top: 0.65rem;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  background: rgba(219, 234, 254, 0.45);
+  border-radius: 8px;
+  padding: 0.6rem 0.65rem;
+}
+
+.excel-loader-audit h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+  color: #1d3c75;
+}
+
+.excel-loader-audit p {
+  margin: 0.2rem 0;
+  font-size: 0.78rem;
+  color: #294a81;
+}
+
+.excel-loader-questions {
+  margin-top: 0.45rem;
+}
+
+.excel-loader-questions strong {
+  display: block;
+  margin-bottom: 0.32rem;
+  font-size: 0.78rem;
+  color: #18386f;
+}
+
+.excel-loader-question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+  margin-bottom: 0.4rem;
+}
+
+.excel-loader-question span {
+  font-size: 0.76rem;
+  color: #1f3f76;
+}
+
+.excel-loader-question select {
+  border: 1px solid rgba(96, 136, 206, 0.5);
+  border-radius: 7px;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.78rem;
+  color: #17366d;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+@media (max-width: 1024px) {
+  .excel-loader-layout {
+    grid-template-columns: 1fr;
+    padding: 0.7rem;
+  }
+
+  .excel-loader-panel {
+    position: static;
+  }
+}
