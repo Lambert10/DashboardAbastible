@@ -2660,11 +2660,28 @@ function ExcelDashboardLoader() {
     [questionAnswers, requiredQuestions],
   )
 
-  const canSaveSnapshot =
-    Boolean(snapshotCandidate) &&
-    !snapshotValidationErrors.length &&
-    !unansweredRequiredQuestions.length &&
-    !isSavingSnapshot
+  const canSaveSnapshot = Boolean(snapshotCandidate) && !isSavingSnapshot
+
+  const saveBlockingReasons = useMemo(() => {
+    const reasons = []
+
+    if (!snapshotCandidate) {
+      reasons.push('No hay datos listos para guardar (revisa archivo, mapeo y fecha).')
+      return reasons
+    }
+
+    if (snapshotValidationErrors.length) {
+      reasons.push(`Hay ${snapshotValidationErrors.length} error(es) de validación por corregir.`)
+    }
+
+    if (unansweredRequiredQuestions.length) {
+      reasons.push(
+        `Faltan ${unansweredRequiredQuestions.length} pregunta(s) requerida(s) en auditoría.`,
+      )
+    }
+
+    return reasons
+  }, [snapshotCandidate, snapshotValidationErrors.length, unansweredRequiredQuestions.length])
 
   const handleSaveSnapshot = async () => {
     if (!snapshotCandidate) {
@@ -3025,6 +3042,9 @@ function ExcelDashboardLoader() {
         >
           {isSavingSnapshot ? 'Guardando snapshot...' : 'Guardar snapshot validado'}
         </button>
+        {saveBlockingReasons.length ? (
+          <p className="excel-loader-hint">{saveBlockingReasons.join(' ')}</p>
+        ) : null}
 
         {saveNotice ? <p className="excel-loader-success">{saveNotice}</p> : null}
         {historyError ? <p className="excel-loader-error">{historyError}</p> : null}
