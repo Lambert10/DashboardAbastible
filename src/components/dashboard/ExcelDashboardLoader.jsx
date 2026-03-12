@@ -10,6 +10,7 @@ const COLOR_PALETTE = ['#2563eb', '#0ea5e9', '#14b8a6', '#22c55e', '#f59e0b', '#
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '')
   .trim()
   .replace(/\/+$/, '')
+const STREAK_API_FALLBACK_BASE_URL = 'https://dashboardabastible.onrender.com'
 const DAILY_HISTORY_API_PATH = `${API_BASE_URL}/api/daily-history`
 const STREAK_PIPELINES_API_PATH = `${API_BASE_URL}/api/streak/pipelines`
 const MAX_DAILY_HISTORY_RECORDS = 730
@@ -1112,6 +1113,32 @@ async function parseApiResponse(response) {
   }
 }
 
+async function fetchJsonWithFallback(primaryUrl, fallbackUrl, isPayloadValid) {
+  const request = async (url) => {
+    const response = await fetch(url)
+    const payload = await parseApiResponse(response)
+    return { response, payload, url }
+  }
+
+  const primaryResult = await request(primaryUrl)
+  const primaryValid = Boolean(isPayloadValid?.(primaryResult.payload))
+  if (primaryResult.response.ok && primaryValid) {
+    return primaryResult
+  }
+
+  if (!fallbackUrl || fallbackUrl === primaryUrl) {
+    return primaryResult
+  }
+
+  const fallbackResult = await request(fallbackUrl)
+  const fallbackValid = Boolean(isPayloadValid?.(fallbackResult.payload))
+  if (fallbackResult.response.ok && fallbackValid) {
+    return fallbackResult
+  }
+
+  return fallbackResult.response.ok ? primaryResult : fallbackResult
+}
+
 function resolveApiErrorMessage(payload, fallbackMessage) {
   if (payload && typeof payload.error === 'string' && payload.error.trim()) {
     return payload.error
@@ -1586,8 +1613,13 @@ function normalizeStreakPipelines(items) {
 }
 
 async function fetchStreakPipelines() {
-  const response = await fetch(STREAK_PIPELINES_API_PATH)
-  const payload = await parseApiResponse(response)
+  const fallbackUrl = `${STREAK_API_FALLBACK_BASE_URL}/api/streak/pipelines`
+  const { response, payload } = await fetchJsonWithFallback(
+    STREAK_PIPELINES_API_PATH,
+    fallbackUrl,
+    (body) => typeof body?.configured === 'boolean' && Array.isArray(body?.pipelines),
+  )
+
   if (!response.ok) {
     throw new Error(resolveApiErrorMessage(payload, 'No se pudieron cargar los pipelines de Streak.'))
   }
@@ -1600,8 +1632,15 @@ async function fetchStreakPipelines() {
 }
 
 async function fetchStreakPipelineRows(pipelineKey) {
-  const response = await fetch(`${STREAK_PIPELINES_API_PATH}/${encodeURIComponent(pipelineKey)}/boxes`)
-  const payload = await parseApiResponse(response)
+  const encodedPipelineKey = encodeURIComponent(pipelineKey)
+  const primaryUrl = `${STREAK_PIPELINES_API_PATH}/${encodedPipelineKey}/boxes`
+  const fallbackUrl = `${STREAK_API_FALLBACK_BASE_URL}/api/streak/pipelines/${encodedPipelineKey}/boxes`
+  const { response, payload } = await fetchJsonWithFallback(
+    primaryUrl,
+    fallbackUrl,
+    (body) => Array.isArray(body?.rows) && Array.isArray(body?.headers),
+  )
+
   if (!response.ok) {
     throw new Error(resolveApiErrorMessage(payload, 'No se pudo importar la informacion desde Streak.'))
   }
@@ -2844,6 +2883,7 @@ function ExcelDashboardLoader() {
               {isLoadingStreakPipelines ? 'Actualizando...' : 'Actualizar'}
             </button>
           </div>
+          {streakError ? <p className="excel-loader-error">{streakError}</p> : null}
         </div>
 
         <label className="excel-loader-field">
@@ -3113,7 +3153,6 @@ function ExcelDashboardLoader() {
         ) : null}
 
         {error ? <p className="excel-loader-error">{error}</p> : null}
-        {streakError ? <p className="excel-loader-error">{streakError}</p> : null}
       </section>
 
       <ExecutiveDashboard
