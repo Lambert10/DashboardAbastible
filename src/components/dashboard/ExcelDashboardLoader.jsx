@@ -11,7 +11,9 @@ const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '')
   .trim()
   .replace(/\/+$/, '')
 const STREAK_API_FALLBACK_BASE_URL = 'https://dashboardabastible.onrender.com'
+const DAILY_HISTORY_API_FALLBACK_BASE_URL = 'https://dashboardabastible.onrender.com'
 const DAILY_HISTORY_API_PATH = `${API_BASE_URL}/api/daily-history`
+const DAILY_HISTORY_API_FALLBACK_PATH = `${DAILY_HISTORY_API_FALLBACK_BASE_URL}/api/daily-history`
 const STREAK_PIPELINES_API_PATH = `${API_BASE_URL}/api/streak/pipelines`
 const MAX_DAILY_HISTORY_RECORDS = 730
 const LEGACY_SEGMENT_END_DAY_KEY = '2026-02-25'
@@ -1113,9 +1115,9 @@ async function parseApiResponse(response) {
   }
 }
 
-async function fetchJsonWithFallback(primaryUrl, fallbackUrl, isPayloadValid) {
+async function fetchJsonWithFallback(primaryUrl, fallbackUrl, isPayloadValid, fetchOptions = undefined) {
   const request = async (url) => {
-    const response = await fetch(url)
+    const response = await fetch(url, fetchOptions)
     const payload = await parseApiResponse(response)
     return { response, payload, url }
   }
@@ -1148,8 +1150,11 @@ function resolveApiErrorMessage(payload, fallbackMessage) {
 }
 
 async function fetchDailyHistorySnapshots() {
-  const response = await fetch(DAILY_HISTORY_API_PATH)
-  const payload = await parseApiResponse(response)
+  const { response, payload } = await fetchJsonWithFallback(
+    DAILY_HISTORY_API_PATH,
+    DAILY_HISTORY_API_FALLBACK_PATH,
+    (body) => Array.isArray(body?.snapshots),
+  )
   if (!response.ok) {
     throw new Error(resolveApiErrorMessage(payload, 'No se pudo cargar el historial guardado.'))
   }
@@ -1159,14 +1164,19 @@ async function fetchDailyHistorySnapshots() {
 
 async function saveDailyHistorySnapshot(snapshot, dashboardPayload = null) {
   const requestBody = dashboardPayload ? { ...snapshot, payload: dashboardPayload } : snapshot
-  const response = await fetch(`${DAILY_HISTORY_API_PATH}/${encodeURIComponent(snapshot.dayKey)}`, {
+  const requestOptions = {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
-  })
-  const payload = await parseApiResponse(response)
+  }
+  const { response, payload } = await fetchJsonWithFallback(
+    `${DAILY_HISTORY_API_PATH}/${encodeURIComponent(snapshot.dayKey)}`,
+    `${DAILY_HISTORY_API_FALLBACK_PATH}/${encodeURIComponent(snapshot.dayKey)}`,
+    (body) => Array.isArray(body?.snapshots),
+    requestOptions,
+  )
   if (!response.ok) {
     throw new Error(resolveApiErrorMessage(payload, 'No se pudo guardar el snapshot en la base de datos.'))
   }
@@ -1175,16 +1185,23 @@ async function saveDailyHistorySnapshot(snapshot, dashboardPayload = null) {
 }
 
 async function clearDailyHistorySnapshots() {
-  const response = await fetch(DAILY_HISTORY_API_PATH, { method: 'DELETE' })
-  const payload = await parseApiResponse(response)
+  const { response, payload } = await fetchJsonWithFallback(
+    DAILY_HISTORY_API_PATH,
+    DAILY_HISTORY_API_FALLBACK_PATH,
+    () => true,
+    { method: 'DELETE' },
+  )
   if (!response.ok) {
     throw new Error(resolveApiErrorMessage(payload, 'No se pudo borrar el historial guardado.'))
   }
 }
 
 async function fetchDashboardPayloadByDayKey(dayKey) {
-  const response = await fetch(`${DAILY_HISTORY_API_PATH}/${encodeURIComponent(dayKey)}/payload`)
-  const payload = await parseApiResponse(response)
+  const { response, payload } = await fetchJsonWithFallback(
+    `${DAILY_HISTORY_API_PATH}/${encodeURIComponent(dayKey)}/payload`,
+    `${DAILY_HISTORY_API_FALLBACK_PATH}/${encodeURIComponent(dayKey)}/payload`,
+    (body) => Array.isArray(body?.rows) && Array.isArray(body?.headers),
+  )
   if (!response.ok) {
     throw new Error(
       resolveApiErrorMessage(
