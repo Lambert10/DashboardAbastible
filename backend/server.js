@@ -83,10 +83,8 @@ if (usePostgres) {
 
 let selectAllSnapshotsStatement = null
 let upsertSnapshotStatement = null
-let insertSnapshotStatement = null
 let deleteSnapshotsStatement = null
 let deletePayloadsStatement = null
-let deleteOrphanPayloadsStatement = null
 let upsertPayloadStatement = null
 let selectPayloadByDayKeyStatement = null
 let selectPayloadDayKeysStatement = null
@@ -194,46 +192,8 @@ function initializeSqliteStatements() {
       saved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   `)
 
-  insertSnapshotStatement = database.prepare(`
-    INSERT INTO daily_history_snapshots (
-      day_key,
-      file_name,
-      sheet_name,
-      total_providers,
-      contacted_providers,
-      trained_providers,
-      enrolled_providers,
-      rescued_providers,
-      cited_providers,
-      training_days_count,
-      contact_rate,
-      trained_rate,
-      rescue_rate,
-      saved_at
-    ) VALUES (
-      @dayKey,
-      @fileName,
-      @sheetName,
-      @totalProviders,
-      @contactedProviders,
-      @trainedProviders,
-      @enrolledProviders,
-      @rescuedProviders,
-      @citedProviders,
-      @trainingDaysCount,
-      @contactRate,
-      @trainedRate,
-      @rescueRate,
-      @savedAt
-    )
-  `)
-
   deleteSnapshotsStatement = database.prepare('DELETE FROM daily_history_snapshots')
   deletePayloadsStatement = database.prepare('DELETE FROM daily_history_payloads')
-  deleteOrphanPayloadsStatement = database.prepare(`
-    DELETE FROM daily_history_payloads
-    WHERE day_key NOT IN (SELECT day_key FROM daily_history_snapshots)
-  `)
 
   upsertPayloadStatement = database.prepare(`
     INSERT INTO daily_history_payloads (
@@ -456,52 +416,6 @@ async function dbUpsertSnapshot(snapshot) {
   upsertSnapshotStatement.run(snapshot)
 }
 
-async function dbInsertSnapshot(snapshot) {
-  if (usePostgres) {
-    await pgPool.query(
-      `
-      INSERT INTO daily_history_snapshots (
-        day_key,
-        file_name,
-        sheet_name,
-        total_providers,
-        contacted_providers,
-        trained_providers,
-        enrolled_providers,
-        rescued_providers,
-        cited_providers,
-        training_days_count,
-        contact_rate,
-        trained_rate,
-        rescue_rate,
-        saved_at
-      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
-      )
-      `,
-      [
-        snapshot.dayKey,
-        snapshot.fileName,
-        snapshot.sheetName,
-        snapshot.totalProviders,
-        snapshot.contactedProviders,
-        snapshot.trainedProviders,
-        snapshot.enrolledProviders,
-        snapshot.rescuedProviders,
-        snapshot.citedProviders,
-        snapshot.trainingDaysCount,
-        snapshot.contactRate,
-        snapshot.trainedRate,
-        snapshot.rescueRate,
-        snapshot.savedAt,
-      ],
-    )
-    return
-  }
-
-  insertSnapshotStatement.run(snapshot)
-}
-
 async function dbDeleteSnapshots() {
   if (usePostgres) {
     await pgPool.query('DELETE FROM daily_history_snapshots')
@@ -518,18 +432,6 @@ async function dbDeletePayloads() {
   }
 
   deletePayloadsStatement.run()
-}
-
-async function dbDeleteOrphanPayloads() {
-  if (usePostgres) {
-    await pgPool.query(`
-      DELETE FROM daily_history_payloads
-      WHERE day_key NOT IN (SELECT day_key FROM daily_history_snapshots)
-    `)
-    return
-  }
-
-  deleteOrphanPayloadsStatement.run()
 }
 
 async function dbUpsertPayload(payload) {
@@ -973,86 +875,9 @@ function normalizeSnapshotsForTimeline(snapshots) {
   return normalized.slice(-MAX_DAILY_HISTORY_RECORDS)
 }
 
-function areSnapshotsEqualForModel(first, second) {
-  return (
-    first.dayKey === second.dayKey &&
-    first.fileName === second.fileName &&
-    first.sheetName === second.sheetName &&
-    first.totalProviders === second.totalProviders &&
-    first.contactedProviders === second.contactedProviders &&
-    first.trainedProviders === second.trainedProviders &&
-    first.enrolledProviders === second.enrolledProviders &&
-    first.rescuedProviders === second.rescuedProviders &&
-    first.citedProviders === second.citedProviders &&
-    first.trainingDaysCount === second.trainingDaysCount &&
-    first.contactRate === second.contactRate &&
-    first.trainedRate === second.trainedRate &&
-    first.rescueRate === second.rescueRate
-  )
-}
-
-function needsNormalizationPersist(rawSnapshots, normalizedSnapshots) {
-  if (rawSnapshots.length !== normalizedSnapshots.length) {
-    return true
-  }
-
-  for (let index = 0; index < rawSnapshots.length; index += 1) {
-    const raw = sanitizeSnapshotForModel(rawSnapshots[index])
-    const normalized = normalizedSnapshots[index]
-    if (!areSnapshotsEqualForModel(raw, normalized)) {
-      return true
-    }
-  }
-
-  return false
-}
-
-async function persistNormalizedSnapshots(snapshots) {
-  await dbDeleteSnapshots()
-  for (const snapshot of snapshots) {
-    const {
-      dayKey,
-      fileName,
-      sheetName,
-      totalProviders,
-      contactedProviders,
-      trainedProviders,
-      enrolledProviders,
-      rescuedProviders,
-      citedProviders,
-      trainingDaysCount,
-      contactRate,
-      trainedRate,
-      rescueRate,
-      savedAt,
-    } = snapshot
-
-    await dbInsertSnapshot({
-      dayKey,
-      fileName,
-      sheetName,
-      totalProviders,
-      contactedProviders,
-      trainedProviders,
-      enrolledProviders,
-      rescuedProviders,
-      citedProviders,
-      trainingDaysCount,
-      contactRate,
-      trainedRate,
-      rescueRate,
-      savedAt: savedAt || new Date().toISOString(),
-    })
-  }
-  await dbDeleteOrphanPayloads()
-}
-
 async function readModelSnapshots() {
   const rawSnapshots = await readAllSnapshots()
   const normalizedSnapshots = normalizeSnapshotsForTimeline(rawSnapshots)
-  if (needsNormalizationPersist(rawSnapshots, normalizedSnapshots)) {
-    await persistNormalizedSnapshots(normalizedSnapshots)
-  }
 
   const payloadDayKeys = await readPayloadDayKeySet()
   return normalizedSnapshots.map((snapshot) => ({
