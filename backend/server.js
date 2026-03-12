@@ -2,6 +2,7 @@
 
 import 'dotenv/config'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Buffer } from 'node:buffer'
 import { fileURLToPath } from 'node:url'
@@ -22,10 +23,29 @@ const KNOWN_TOTAL_ANOMALIES = new Set(['2026-03-06:1419'])
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const dataDirectoryPath = path.join(__dirname, 'data')
-const databasePath = process.env.DASHBOARD_DB_PATH ?? path.join(dataDirectoryPath, 'dashboard-history.sqlite')
+const defaultDatabasePath = path.join(dataDirectoryPath, 'dashboard-history.sqlite')
+const requestedDatabasePath = String(process.env.DASHBOARD_DB_PATH ?? '').trim() || defaultDatabasePath
 
-fs.mkdirSync(dataDirectoryPath, { recursive: true })
+function resolveDatabasePath(requestedPath) {
+  const fallbackDatabasePath = path.join(os.tmpdir(), 'dashboard-history.sqlite')
 
+  try {
+    fs.mkdirSync(path.dirname(requestedPath), { recursive: true })
+    return requestedPath
+  } catch (error) {
+    if (requestedPath === fallbackDatabasePath) {
+      throw error
+    }
+
+    fs.mkdirSync(path.dirname(fallbackDatabasePath), { recursive: true })
+    console.warn(
+      `[dashboard-api] No se pudo usar DASHBOARD_DB_PATH (${requestedPath}). Se usara ruta temporal: ${fallbackDatabasePath}.`,
+    )
+    return fallbackDatabasePath
+  }
+}
+
+const databasePath = resolveDatabasePath(requestedDatabasePath)
 const database = new Database(databasePath)
 database.pragma('journal_mode = WAL')
 database.exec(`
