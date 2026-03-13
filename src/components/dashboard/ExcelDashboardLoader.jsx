@@ -2391,83 +2391,6 @@ function ExcelDashboardLoader() {
     }
   }, [dailyHistorySnapshots])
 
-  const previousSnapshotWithPayload = useMemo(() => {
-    if (!isValidDayKey(snapshotDayKey)) {
-      return null
-    }
-
-    return (
-      [...dailyHistorySnapshots]
-        .filter((snapshot) => snapshot.hasPayload && snapshot.dayKey < snapshotDayKey)
-        .sort((a, b) => b.dayKey.localeCompare(a.dayKey))[0] ?? null
-    )
-  }, [dailyHistorySnapshots, snapshotDayKey])
-
-  useEffect(() => {
-    let isCancelled = false
-
-    const loadGroupComparisonMetrics = async () => {
-      if (!rows.length || !previousSnapshotWithPayload) {
-        setGroupComparisonMetrics(null)
-        return
-      }
-
-      try {
-        let payload = comparisonPayloadCacheRef.current.get(previousSnapshotWithPayload.dayKey)
-        if (!payload) {
-          payload = await fetchDashboardPayloadByDayKey(previousSnapshotWithPayload.dayKey)
-          if (isCancelled) {
-            return
-          }
-
-          comparisonPayloadCacheRef.current.set(previousSnapshotWithPayload.dayKey, payload)
-        }
-
-        const comparisonSummary = buildGroupContactSummary(
-          payload.rows,
-          payload.mapping,
-          payload.contactStage || contactStage,
-          payload.trainedStage || trainedStage,
-          effectiveOfficialProviderIdSet,
-        )
-
-        if (isCancelled) {
-          return
-        }
-
-        setGroupComparisonMetrics({
-          dayKey: previousSnapshotWithPayload.dayKey,
-          rows: comparisonSummary.byGroup,
-          summary: {
-            totalProviders: comparisonSummary.totalProviders,
-            contactedProviders: comparisonSummary.contactedProviders,
-            trainedProviders: comparisonSummary.trainedProviders,
-            pendingProviders: comparisonSummary.pendingProviders,
-            contactRate: comparisonSummary.contactRate,
-            trainedRate: comparisonSummary.trainedRate,
-          },
-        })
-      } catch {
-        if (!isCancelled) {
-          setGroupComparisonMetrics(null)
-        }
-      }
-    }
-
-    void loadGroupComparisonMetrics()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [
-    contactStage,
-    dailyHistorySnapshots,
-    effectiveOfficialProviderIdSet,
-    previousSnapshotWithPayload,
-    rows.length,
-    trainedStage,
-  ])
-
   const savedSnapshotDayKeySet = useMemo(
     () => new Set(dailyHistorySnapshots.map((snapshot) => snapshot.dayKey)),
     [dailyHistorySnapshots],
@@ -2553,6 +2476,84 @@ function ExcelDashboardLoader() {
 
     return universe
   }, [mapping, officialProviderUniverseIds, rows, snapshotDayKey])
+
+  const previousSnapshotWithPayload = useMemo(() => {
+    if (!isValidDayKey(snapshotDayKey)) {
+      return null
+    }
+
+    return (
+      [...dailyHistorySnapshots]
+        .filter((snapshot) => snapshot.hasPayload && snapshot.dayKey < snapshotDayKey)
+        .sort((a, b) => b.dayKey.localeCompare(a.dayKey))[0] ?? null
+    )
+  }, [dailyHistorySnapshots, snapshotDayKey])
+
+  useEffect(() => {
+    let isCancelled = false
+
+    const loadGroupComparisonMetrics = async () => {
+      if (!rows.length || !previousSnapshotWithPayload) {
+        setGroupComparisonMetrics(null)
+        return
+      }
+
+      try {
+        let payload = comparisonPayloadCacheRef.current.get(previousSnapshotWithPayload.dayKey)
+        if (!payload) {
+          payload = await fetchDashboardPayloadByDayKey(previousSnapshotWithPayload.dayKey)
+          if (isCancelled) {
+            return
+          }
+
+          comparisonPayloadCacheRef.current.set(previousSnapshotWithPayload.dayKey, payload)
+        }
+
+        const comparisonSummary = buildGroupContactSummary(
+          payload.rows,
+          payload.mapping,
+          payload.contactStage || contactStage,
+          payload.trainedStage || trainedStage,
+          effectiveOfficialProviderIdSet,
+        )
+
+        if (isCancelled) {
+          return
+        }
+
+        setGroupComparisonMetrics({
+          dayKey: previousSnapshotWithPayload.dayKey,
+          rows: comparisonSummary.byGroup,
+          summary: {
+            totalProviders: comparisonSummary.totalProviders,
+            contactedProviders: comparisonSummary.contactedProviders,
+            trainedProviders: comparisonSummary.trainedProviders,
+            pendingProviders: comparisonSummary.pendingProviders,
+            contactRate: comparisonSummary.contactRate,
+            trainedRate: comparisonSummary.trainedRate,
+          },
+        })
+      } catch {
+        if (!isCancelled) {
+          setGroupComparisonMetrics(null)
+        }
+      }
+    }
+
+    void loadGroupComparisonMetrics()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [
+    contactStage,
+    dailyHistorySnapshots,
+    effectiveOfficialProviderIdSet,
+    previousSnapshotWithPayload,
+    rows.length,
+    trainedStage,
+  ])
+
 
   const contactMetrics = useMemo(
     () =>
