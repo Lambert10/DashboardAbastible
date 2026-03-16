@@ -35,22 +35,23 @@ function normalizeGroupKey(value) {
 function renderMetricWithDelta(value, delta, hasComparison) {
   const numericValue = Number(value)
   const numericDelta = Number(delta)
-  const hasPositiveDelta = hasComparison && Number.isFinite(numericDelta) && numericDelta > 0
+  const hasDelta = hasComparison && Number.isFinite(numericDelta)
+  const hasPositiveDelta = hasDelta && numericDelta > 0
   const valueDisplay = Number.isFinite(numericValue) ? numericValue : 0
 
   return (
     <span className="group-contact-table__metric">
       <span className="group-contact-table__metric-value">{valueDisplay}</span>
       <span
-        className={`group-contact-table__metric-change ${hasPositiveDelta ? 'group-contact-table__metric-change--up' : 'group-contact-table__metric-change--empty'}`}
+        className={`group-contact-table__metric-change ${hasPositiveDelta ? 'group-contact-table__metric-change--up' : 'group-contact-table__metric-change--neutral'}`}
       >
-        {hasPositiveDelta ? (
+        {hasDelta ? (
           <>
             <span>{formatSignedDelta(numericDelta)}</span>
-            <i className="group-contact-table__delta-arrow" aria-hidden="true" />
+            {hasPositiveDelta ? <i className="group-contact-table__delta-arrow" aria-hidden="true" /> : null}
           </>
         ) : (
-          <span className="group-contact-table__metric-change-placeholder">+0</span>
+          <span>--</span>
         )}
       </span>
     </span>

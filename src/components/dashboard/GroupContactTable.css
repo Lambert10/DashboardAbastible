@@ -115,16 +115,12 @@
   justify-self: end;
 }
 
-.group-contact-table__metric-change--empty {
-  color: transparent;
-}
-
-.group-contact-table__metric-change-placeholder {
-  visibility: hidden;
-}
-
 .group-contact-table__metric-change--up {
   color: #14803c;
+}
+
+.group-contact-table__metric-change--neutral {
+  color: #2f538b;
 }
 
 .group-contact-table__delta-arrow {
