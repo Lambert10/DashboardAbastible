@@ -96,6 +96,9 @@ function CitationTrainingDayBars({ title, rows, total, totalLabel = 'Total' }) {
 }
 
 function CitationAnalysisCard({ data }) {
+  const showMissingTrainingDay = data.trainedWithoutTrainingDay > 0
+  const showMultipleTrainingDays = data.providersWithMultipleTrainingDays > 0
+
   return (
     <article className="citation-analysis-card">
       <header className="citation-analysis-card__header">
@@ -103,9 +106,17 @@ function CitationAnalysisCard({ data }) {
         <div className="citation-analysis-card__badges">
           <span>Total de agendas en proveedores: {data.totalAppointments}</span>
           <span>Proveedores citados: {data.providersWithCitation}</span>
-          <span>Cobertura capacitados: {data.coverageRate.toFixed(1)}%</span>
+          <span>Capacitados (etapa actual): {data.trainedByStage}</span>
+          <span>Cobertura etapa actual: {data.stageCoverageRate.toFixed(1)}%</span>
+          <span>Capacitados con Dia de Capacitacion: {data.trainedByTrainingDay}</span>
+          <span>Cobertura con Dia de Capacitacion: {data.coverageRate.toFixed(1)}%</span>
+          {showMissingTrainingDay ? (
+            <span>Capacitados sin Dia de Capacitacion: {data.trainedWithoutTrainingDay}</span>
+          ) : null}
+          {showMultipleTrainingDays ? (
+            <span>Capacitados con multiples dias: {data.providersWithMultipleTrainingDays}</span>
+          ) : null}
           <span>Dias con capacitacion: {data.trainingDaysCount}</span>
-          <span>Capacitados totales: {data.trainedByTrainingDay}</span>
         </div>
       </header>
 
@@ -128,8 +139,8 @@ function CitationAnalysisCard({ data }) {
         <CitationTrainingDayBars
           title="Capacitados por dia (Dia de Capacitacion)"
           rows={data.byTrainingDay}
-          total={data.trainedByTrainingDay}
-          totalLabel="Total"
+          total={data.totalTrainingAttendances}
+          totalLabel="Total registros"
         />
       </div>
     </article>

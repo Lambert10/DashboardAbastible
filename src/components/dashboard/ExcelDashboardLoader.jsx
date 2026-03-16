@@ -1930,16 +1930,21 @@ function buildRescuedAnalysis(rows, mapping, totalProviders, contactStage, offic
   }
 }
 
-function buildCitationAnalysis(rows, mapping, totalProviders, officialProviderIdSet) {
+function buildCitationAnalysis(rows, mapping, totalProviders, trainedStage, officialProviderIdSet) {
   if (!mapping.providerId) {
     return {
       totalAppointments: 0,
       providersWithCitation: 0,
       trainedByCitation: 0,
+      trainedByStage: 0,
+      trainedWithoutTrainingDay: 0,
+      stageCoverageRate: 0,
       coverageRate: 0,
       appointmentsPerProvider: 0,
       trainingDaysCount: 0,
       trainedByTrainingDay: 0,
+      totalTrainingAttendances: 0,
+      providersWithMultipleTrainingDays: 0,
       byTrainingDay: [],
       byGroup: [],
       byStage: [],
@@ -1998,8 +2003,27 @@ function buildCitationAnalysis(rows, mapping, totalProviders, officialProviderId
   const snapshotValues = Array.from(providerSnapshots.values())
 
   const trainingDayMap = new Map()
+  const trainingBucketsByProvider = new Map()
   const trainedProvidersFromDay = new Set()
+  const trainedProvidersFromStage = new Set()
   const inferredTrainingYear = inferTrainingYear(scopedRows, mapping)
+  const normalizedTrainedStage = normalizeText(trainedStage)
+
+  if (mapping.stage && normalizedTrainedStage) {
+    scopedRows.forEach((row) => {
+      if (!hasValue(row[mapping.providerId]) || !hasValue(row[mapping.stage])) {
+        return
+      }
+
+      const stageValue = normalizeText(row[mapping.stage])
+      if (stageValue !== normalizedTrainedStage) {
+        return
+      }
+
+      const providerId = String(row[mapping.providerId]).trim()
+      trainedProvidersFromStage.add(providerId)
+    })
+  }
 
   if (mapping.trainingDay) {
     scopedRows.forEach((row) => {
@@ -2025,6 +2049,11 @@ function buildCitationAnalysis(rows, mapping, totalProviders, officialProviderId
         const bucket = trainingDayMap.get(bucketKey)
         bucket.providers.add(providerId)
         bucket.inferredYear = bucket.inferredYear && Boolean(bucketInferredYear)
+
+        if (!trainingBucketsByProvider.has(providerId)) {
+          trainingBucketsByProvider.set(providerId, new Set())
+        }
+        trainingBucketsByProvider.get(providerId).add(bucketKey)
       })
       trainedProvidersFromDay.add(providerId)
     })
@@ -2043,18 +2072,38 @@ function buildCitationAnalysis(rows, mapping, totalProviders, officialProviderId
       count: bucket.providers.size,
     }))
 
+  const totalTrainingAttendances = byTrainingDay.reduce(
+    (accumulator, row) => accumulator + row.count,
+    0,
+  )
   const trainedByTrainingDay = trainedProvidersFromDay.size
+  const trainedByStage = trainedProvidersFromStage.size
+  let trainedWithoutTrainingDay = 0
+  trainedProvidersFromStage.forEach((providerId) => {
+    if (!trainedProvidersFromDay.has(providerId)) {
+      trainedWithoutTrainingDay += 1
+    }
+  })
+  const providersWithMultipleTrainingDays = Array.from(trainingBucketsByProvider.values()).filter(
+    (bucketSet) => bucketSet.size > 1,
+  ).length
   const trainedByCitation = trainedByTrainingDay
+  const stageCoverageRate = totalProviders ? (trainedByStage / totalProviders) * 100 : 0
   const coverageRate = totalProviders ? (trainedByTrainingDay / totalProviders) * 100 : 0
 
   return {
     totalAppointments,
     providersWithCitation,
     trainedByCitation,
+    trainedByStage,
+    trainedWithoutTrainingDay,
+    stageCoverageRate,
     coverageRate,
     appointmentsPerProvider,
     trainingDaysCount: trainingDayMap.size,
     trainedByTrainingDay,
+    totalTrainingAttendances,
+    providersWithMultipleTrainingDays,
     byTrainingDay,
     byGroup: aggregateCounts(snapshotValues.map((item) => item.group)).sort((a, b) =>
       compareGroupLabelsAsc(a.label, b.label),
@@ -2554,7 +2603,6 @@ function ExcelDashboardLoader() {
     trainedStage,
   ])
 
-
   const contactMetrics = useMemo(
     () =>
       buildGroupContactSummary(
@@ -2584,9 +2632,10 @@ function ExcelDashboardLoader() {
         rows,
         mapping,
         contactMetrics.totalProviders,
+        trainedStage,
         effectiveOfficialProviderIdSet,
       ),
-    [contactMetrics.totalProviders, effectiveOfficialProviderIdSet, mapping, rows],
+    [contactMetrics.totalProviders, effectiveOfficialProviderIdSet, mapping, rows, trainedStage],
   )
 
   const snapshotCandidate = useMemo(() => {
