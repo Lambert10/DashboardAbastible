@@ -115,16 +115,16 @@
   justify-self: end;
 }
 
-.group-contact-table__metric-change--empty {
-  color: transparent;
-}
-
-.group-contact-table__metric-change-placeholder {
-  visibility: hidden;
-}
-
 .group-contact-table__metric-change--up {
   color: #14803c;
+}
+
+.group-contact-table__metric-change--down {
+  color: #b42323;
+}
+
+.group-contact-table__metric-change--neutral {
+  color: #2f538b;
 }
 
 .group-contact-table__delta-arrow {
@@ -133,6 +133,11 @@
   border-left: 0.24rem solid transparent;
   border-right: 0.24rem solid transparent;
   border-bottom: 0.4rem solid #16a34a;
+}
+
+.group-contact-table__delta-arrow--down {
+  transform: rotate(180deg);
+  border-bottom-color: #dc2626;
 }
 
 .group-contact-table__row--head {

@@ -32,26 +32,31 @@ function normalizeGroupKey(value) {
     .trim()
 }
 
-function renderMetricWithDelta(value, delta) {
+function renderMetricWithDelta(value, delta, hasComparison) {
   const numericValue = Number(value)
   const numericDelta = Number(delta)
-  const hasPositiveDelta = Number.isFinite(numericDelta) && numericDelta > 0
+  const hasDelta = hasComparison && Number.isFinite(numericDelta)
+  const isPositiveDelta = hasDelta && numericDelta > 0
+  const isNegativeDelta = hasDelta && numericDelta < 0
+  const changeClassName = isPositiveDelta
+    ? 'group-contact-table__metric-change--up'
+    : isNegativeDelta
+      ? 'group-contact-table__metric-change--down'
+      : 'group-contact-table__metric-change--neutral'
   const valueDisplay = Number.isFinite(numericValue) ? numericValue : 0
 
   return (
     <span className="group-contact-table__metric">
       <span className="group-contact-table__metric-value">{valueDisplay}</span>
-      <span
-        className={`group-contact-table__metric-change ${hasPositiveDelta ? 'group-contact-table__metric-change--up' : 'group-contact-table__metric-change--empty'}`}
-      >
-        {hasPositiveDelta ? (
-          <>
-            <span>{formatSignedDelta(numericDelta)}</span>
-            <i className="group-contact-table__delta-arrow" aria-hidden="true" />
-          </>
-        ) : (
-          <span className="group-contact-table__metric-change-placeholder">+0</span>
-        )}
+      <span className={`group-contact-table__metric-change ${changeClassName}`}>
+        {hasDelta ? <span>{formatSignedDelta(numericDelta)}</span> : <span>--</span>}
+        {isPositiveDelta ? <i className="group-contact-table__delta-arrow" aria-hidden="true" /> : null}
+        {isNegativeDelta ? (
+          <i
+            className="group-contact-table__delta-arrow group-contact-table__delta-arrow--down"
+            aria-hidden="true"
+          />
+        ) : null}
       </span>
     </span>
   )
@@ -216,8 +221,8 @@ function GroupContactTable({ rows, contactStage, trainedStage, summary, comparis
                 <div key={row.group} className="group-contact-table__row">
                   <span title={row.group}>{formatGroupLabel(row.group)}</span>
                   <span>{row.total}</span>
-                  <span>{renderMetricWithDelta(row.contacted, rowContactedDelta)}</span>
-                  <span>{renderMetricWithDelta(row.trained, rowTrainedDelta)}</span>
+                  <span>{renderMetricWithDelta(row.contacted, rowContactedDelta, hasComparison)}</span>
+                  <span>{renderMetricWithDelta(row.trained, rowTrainedDelta, hasComparison)}</span>
                   <span>{row.pending}</span>
                   <span>{row.contactRate.toFixed(1)}%</span>
                   <span>{row.trainedRate.toFixed(1)}%</span>
@@ -228,8 +233,8 @@ function GroupContactTable({ rows, contactStage, trainedStage, summary, comparis
             <div className="group-contact-table__row group-contact-table__row--total">
               <span>TOTAL GENERAL</span>
               <span>{totalProviders}</span>
-              <span>{renderMetricWithDelta(contactedProviders, contactedDelta)}</span>
-              <span>{renderMetricWithDelta(trainedProviders, trainedDelta)}</span>
+              <span>{renderMetricWithDelta(contactedProviders, contactedDelta, hasComparison)}</span>
+              <span>{renderMetricWithDelta(trainedProviders, trainedDelta, hasComparison)}</span>
               <span>{pendingProviders}</span>
               <span>{contactRate.toFixed(1)}%</span>
               <span>{trainedRate.toFixed(1)}%</span>
