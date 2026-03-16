@@ -35,28 +35,23 @@ function normalizeGroupKey(value) {
 function renderMetricWithDelta(value, delta, hasComparison) {
   const numericValue = Number(value)
   const numericDelta = Number(delta)
-  const hasDelta = hasComparison && Number.isFinite(numericDelta)
-  const isPositiveDelta = hasDelta && numericDelta > 0
-  const isNegativeDelta = hasDelta && numericDelta < 0
-  const changeClassName = isPositiveDelta
-    ? 'group-contact-table__metric-change--up'
-    : isNegativeDelta
-      ? 'group-contact-table__metric-change--down'
-      : 'group-contact-table__metric-change--neutral'
+  const hasPositiveDelta = hasComparison && Number.isFinite(numericDelta) && numericDelta > 0
   const valueDisplay = Number.isFinite(numericValue) ? numericValue : 0
 
   return (
     <span className="group-contact-table__metric">
       <span className="group-contact-table__metric-value">{valueDisplay}</span>
-      <span className={`group-contact-table__metric-change ${changeClassName}`}>
-        {hasDelta ? <span>{formatSignedDelta(numericDelta)}</span> : <span>--</span>}
-        {isPositiveDelta ? <i className="group-contact-table__delta-arrow" aria-hidden="true" /> : null}
-        {isNegativeDelta ? (
-          <i
-            className="group-contact-table__delta-arrow group-contact-table__delta-arrow--down"
-            aria-hidden="true"
-          />
-        ) : null}
+      <span
+        className={`group-contact-table__metric-change ${hasPositiveDelta ? 'group-contact-table__metric-change--up' : 'group-contact-table__metric-change--empty'}`}
+      >
+        {hasPositiveDelta ? (
+          <>
+            <span>{formatSignedDelta(numericDelta)}</span>
+            <i className="group-contact-table__delta-arrow" aria-hidden="true" />
+          </>
+        ) : (
+          <span className="group-contact-table__metric-change-placeholder">+0</span>
+        )}
       </span>
     </span>
   )
