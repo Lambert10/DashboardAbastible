@@ -1404,6 +1404,7 @@ function validateSnapshotChronology(snapshots, snapshotCandidate) {
     { key: 'contactedProviders', label: 'Contactados' },
     { key: 'trainedProviders', label: 'Capacitados' },
     { key: 'rescuedProviders', label: 'Rescatados' },
+    { key: 'citedProviders', label: 'Citados' },
   ]
 
   if (snapshotCandidate.contactedProviders < snapshotCandidate.trainedProviders) {
@@ -2888,14 +2889,14 @@ function ExcelDashboardLoader() {
       trainedProviders: contactMetrics.trainedProviders,
       enrolledProviders: contactMetrics.enrolledProviders,
       rescuedProviders: rescuedMetrics.totalRescued,
-      citedProviders: citationMetrics.totalAppointments,
+      citedProviders: citationMetrics.providersScheduledAndCited,
       trainingDaysCount: citationMetrics.trainingDaysCount,
       contactRate: Number(contactMetrics.contactRate.toFixed(1)),
       trainedRate: Number(contactMetrics.trainedRate.toFixed(1)),
       rescueRate: Number(rescuedMetrics.rescueRate.toFixed(1)),
     }
   }, [
-    citationMetrics.totalAppointments,
+    citationMetrics.providersScheduledAndCited,
     citationMetrics.trainingDaysCount,
     contactMetrics.contactedProviders,
     contactMetrics.contactRate,
@@ -3160,7 +3161,7 @@ function ExcelDashboardLoader() {
         'Capacitados',
         'Enrolados',
         'Rescatados',
-        'Citados (agendas)',
+        'Citados',
         'Dias con capacitacion',
         '% Contactados',
         '% Capacitados',

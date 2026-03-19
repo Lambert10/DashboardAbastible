@@ -69,22 +69,30 @@ function renderBadgeDeltaValue(delta) {
 function renderMetricWithDelta(value, delta) {
   const numericValue = Number(value)
   const numericDelta = Number(delta)
-  const hasPositiveDelta = Number.isFinite(numericDelta) && numericDelta > 0
+  const hasDelta = Number.isFinite(numericDelta)
+  const hasPositiveDelta = hasDelta && numericDelta > 0
+  const hasNegativeDelta = hasDelta && numericDelta < 0
   const valueDisplay = Number.isFinite(numericValue) ? numericValue : 0
 
   return (
     <span className="evolution-history-card__metric">
       <span className="evolution-history-card__metric-value">{valueDisplay}</span>
       <span
-        className={`evolution-history-card__metric-change ${hasPositiveDelta ? 'evolution-history-card__metric-change--up' : 'evolution-history-card__metric-change--empty'}`}
+        className={`evolution-history-card__metric-change ${
+          hasPositiveDelta
+            ? 'evolution-history-card__metric-change--up'
+            : hasNegativeDelta
+              ? 'evolution-history-card__metric-change--down'
+              : 'evolution-history-card__metric-change--neutral'
+        }`}
       >
-        {hasPositiveDelta ? (
+        {hasDelta ? (
           <>
             <span>{formatSignedValue(numericDelta)}</span>
-            <i className="evolution-history-card__delta-arrow" aria-hidden="true" />
+            {hasPositiveDelta ? <i className="evolution-history-card__delta-arrow" aria-hidden="true" /> : null}
           </>
         ) : (
-          <span className="evolution-history-card__metric-change-placeholder">+0</span>
+          <span>--</span>
         )}
       </span>
     </span>
@@ -143,7 +151,7 @@ function EvolutionHistoryCard({ snapshots, selectedDayKey, onClearHistory, onExp
       </header>
 
       <p className="evolution-history-card__summary">
-        Se guarda un snapshot por dia para comparar evolucion de contactados, capacitados, rescatados y citados (agendas).
+        Se guarda un snapshot por dia para comparar evolucion de contactados, capacitados y rescatados.
       </p>
 
       {orderedSnapshots.length ? (
@@ -154,7 +162,7 @@ function EvolutionHistoryCard({ snapshots, selectedDayKey, onClearHistory, onExp
             <span>Contactados</span>
             <span>Capacitados</span>
             <span>Rescatados</span>
-            <span>Citados (agendas)</span>
+            <span>Citados</span>
             <span>Segmento</span>
             <span>Delta cap.</span>
           </div>
