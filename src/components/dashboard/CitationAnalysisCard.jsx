@@ -104,7 +104,7 @@ function CitationAnalysisCard({ data }) {
       <header className="citation-analysis-card__header">
         <h3>Citacion de capacitacion (Dia de Citacion)</h3>
         <div className="citation-analysis-card__badges">
-          <span>Total de agendas en proveedores: {data.totalAppointments}</span>
+          <span>Total de agendas con citacion: {data.totalAppointments}</span>
           <span>Proveedores citados (todas las etapas): {data.providersWithCitation}</span>
           <span>
             Agendados y citados{data.contactStageLabel ? ` (${data.contactStageLabel})` : ''}:{' '}

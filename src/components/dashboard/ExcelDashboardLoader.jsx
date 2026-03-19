@@ -2067,11 +2067,12 @@ function buildCitationAnalysis(
     return officialProviderIdSet.has(providerId)
   })
 
-  const citationRows = mapping.citationDay
-    ? scopedRows.filter((row) => hasValue(row[mapping.providerId]) && hasValue(row[mapping.citationDay]))
+  const citationAppointmentRows = mapping.citationDay
+    ? scopedRows.filter((row) => hasValue(row[mapping.citationDay]))
     : []
+  const citationRows = citationAppointmentRows.filter((row) => hasValue(row[mapping.providerId]))
 
-  const totalAppointments = citationRows.length
+  const totalAppointments = citationAppointmentRows.length
   const providerSnapshots = new Map()
 
   citationRows.forEach((row) => {
@@ -2105,8 +2106,9 @@ function buildCitationAnalysis(
   const inferredCitationYear = inferCitationYear(scopedRows, mapping)
 
   if (mapping.citationDay) {
-    citationRows.forEach((row) => {
-      const providerId = String(row[mapping.providerId]).trim()
+    citationAppointmentRows.forEach((row) => {
+      const hasProviderId = hasValue(row[mapping.providerId])
+      const providerId = hasProviderId ? String(row[mapping.providerId]).trim() : ''
       const dayBuckets = parseTrainingDayBuckets(row[mapping.citationDay], inferredCitationYear)
       if (!dayBuckets.length) {
         return
@@ -2123,7 +2125,9 @@ function buildCitationAnalysis(
         }
 
         const bucket = citationDayMap.get(bucketKey)
-        bucket.providers.add(providerId)
+        if (providerId) {
+          bucket.providers.add(providerId)
+        }
         bucket.inferredYear = bucket.inferredYear && Boolean(bucketInferredYear)
         bucket.appointments += 1
       })
