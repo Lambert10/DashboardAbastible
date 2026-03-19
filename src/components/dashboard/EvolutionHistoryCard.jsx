@@ -143,7 +143,7 @@ function EvolutionHistoryCard({ snapshots, selectedDayKey, onClearHistory, onExp
       </header>
 
       <p className="evolution-history-card__summary">
-        Se guarda un snapshot por dia para comparar evolucion de contactados, capacitados y rescatados.
+        Se guarda un snapshot por dia para comparar evolucion de contactados, capacitados, rescatados y citados (agendas).
       </p>
 
       {orderedSnapshots.length ? (
@@ -154,7 +154,7 @@ function EvolutionHistoryCard({ snapshots, selectedDayKey, onClearHistory, onExp
             <span>Contactados</span>
             <span>Capacitados</span>
             <span>Rescatados</span>
-            <span>Citados</span>
+            <span>Citados (agendas)</span>
             <span>Segmento</span>
             <span>Delta cap.</span>
           </div>
