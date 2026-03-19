@@ -105,7 +105,11 @@ function CitationAnalysisCard({ data }) {
         <h3>Citacion de capacitacion (Dia de Citacion)</h3>
         <div className="citation-analysis-card__badges">
           <span>Total de agendas en proveedores: {data.totalAppointments}</span>
-          <span>Proveedores citados: {data.providersWithCitation}</span>
+          <span>Proveedores citados (todas las etapas): {data.providersWithCitation}</span>
+          <span>
+            Agendados y citados{data.contactStageLabel ? ` (${data.contactStageLabel})` : ''}:{' '}
+            {data.providersScheduledAndCited}
+          </span>
           <span>Capacitados (etapa actual): {data.trainedByStage}</span>
           <span>Cobertura etapa actual: {data.stageCoverageRate.toFixed(1)}%</span>
           <span>Capacitados con Dia de Capacitacion: {data.trainedByTrainingDay}</span>

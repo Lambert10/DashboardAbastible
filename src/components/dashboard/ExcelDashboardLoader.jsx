@@ -3,6 +3,7 @@ import ExecutiveDashboard from './ExecutiveDashboard'
 import GroupContactTable from './GroupContactTable'
 import RescuedAnalysisCard from './RescuedAnalysisCard'
 import CitationAnalysisCard from './CitationAnalysisCard'
+import CitationScheduleCard from './CitationScheduleCard'
 import EvolutionHistoryCard from './EvolutionHistoryCard'
 import './ExcelDashboardLoader.css'
 
@@ -688,6 +689,37 @@ function inferTrainingYear(rows, mapping) {
   return Array.from(yearCounts.entries()).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
 }
 
+function inferCitationYear(rows, mapping) {
+  if (!mapping.citationDay) {
+    return new Date().getUTCFullYear()
+  }
+
+  const yearCounts = new Map()
+
+  rows.forEach((row) => {
+    if (!hasValue(row[mapping.citationDay])) {
+      return
+    }
+
+    const buckets = parseTrainingDayBuckets(row[mapping.citationDay])
+    buckets.forEach(({ bucketKey }) => {
+      const dayKey = bucketKey.startsWith('0:') ? bucketKey.slice(2) : ''
+      const year = Number(dayKey.split('-')[0])
+      if (!Number.isInteger(year)) {
+        return
+      }
+
+      yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1)
+    })
+  })
+
+  if (!yearCounts.size) {
+    return new Date().getUTCFullYear()
+  }
+
+  return Array.from(yearCounts.entries()).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]
+}
+
 function shiftDayKeyYear(dayKey, yearOffset) {
   const [yearRaw, monthRaw, dayRaw] = String(dayKey).split('-')
   const year = Number(yearRaw)
@@ -744,6 +776,9 @@ function applyRolloverToInferredDays(trainingDayMap, inferredYear) {
 
     const shiftedBucket = trainingDayMap.get(shiftedBucketKey)
     bucket.providers.forEach((providerId) => shiftedBucket.providers.add(providerId))
+    if (Number.isFinite(bucket.appointments)) {
+      shiftedBucket.appointments = (shiftedBucket.appointments ?? 0) + bucket.appointments
+    }
     trainingDayMap.delete(bucketKey)
   })
 }
@@ -754,6 +789,58 @@ function getTrainingBucketSortKey(bucketKey) {
   }
 
   return `9999-99-99:${bucketKey}`
+}
+
+function parseDayKeyUtcDate(dayKey) {
+  if (!isValidDayKey(dayKey)) {
+    return null
+  }
+
+  const [yearRaw, monthRaw, dayRaw] = String(dayKey).split('-')
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+  const day = Number(dayRaw)
+  const parsed = new Date(Date.UTC(year, month - 1, day))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function shiftDayKeyByDays(dayKey, dayOffset) {
+  const parsed = parseDayKeyUtcDate(dayKey)
+  if (!parsed || !Number.isFinite(dayOffset)) {
+    return ''
+  }
+
+  const shifted = new Date(parsed)
+  shifted.setUTCDate(shifted.getUTCDate() + Math.round(dayOffset))
+  return toValidDayKey(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+  )
+}
+
+function resolveWeekStartDayKey(dayKey) {
+  const parsed = parseDayKeyUtcDate(dayKey)
+  if (!parsed) {
+    return ''
+  }
+
+  const mondayBasedWeekday = (parsed.getUTCDay() + 6) % 7
+  parsed.setUTCDate(parsed.getUTCDate() - mondayBasedWeekday)
+  return toValidDayKey(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, parsed.getUTCDate())
+}
+
+function formatWeekRangeLabel(weekStartDayKey) {
+  if (!isValidDayKey(weekStartDayKey)) {
+    return String(weekStartDayKey ?? '')
+  }
+
+  const weekEndDayKey = shiftDayKeyByDays(weekStartDayKey, 6)
+  if (!weekEndDayKey) {
+    return formatDayLabel(weekStartDayKey)
+  }
+
+  return `${formatDayLabel(weekStartDayKey)} - ${formatDayLabel(weekEndDayKey)}`
 }
 
 function getLocalDayKey(date = new Date()) {
@@ -1317,7 +1404,6 @@ function validateSnapshotChronology(snapshots, snapshotCandidate) {
     { key: 'contactedProviders', label: 'Contactados' },
     { key: 'trainedProviders', label: 'Capacitados' },
     { key: 'rescuedProviders', label: 'Rescatados' },
-    { key: 'citedProviders', label: 'Citados' },
   ]
 
   if (snapshotCandidate.contactedProviders < snapshotCandidate.trainedProviders) {
@@ -1930,11 +2016,20 @@ function buildRescuedAnalysis(rows, mapping, totalProviders, contactStage, offic
   }
 }
 
-function buildCitationAnalysis(rows, mapping, totalProviders, trainedStage, officialProviderIdSet) {
+function buildCitationAnalysis(
+  rows,
+  mapping,
+  totalProviders,
+  contactStage,
+  trainedStage,
+  officialProviderIdSet,
+) {
   if (!mapping.providerId) {
     return {
       totalAppointments: 0,
       providersWithCitation: 0,
+      providersScheduledAndCited: 0,
+      contactStageLabel: String(contactStage ?? ''),
       trainedByCitation: 0,
       trainedByStage: 0,
       trainedWithoutTrainingDay: 0,
@@ -1945,6 +2040,13 @@ function buildCitationAnalysis(rows, mapping, totalProviders, trainedStage, offi
       trainedByTrainingDay: 0,
       totalTrainingAttendances: 0,
       providersWithMultipleTrainingDays: 0,
+      activeCitationDays: 0,
+      activeCitationWeeks: 0,
+      latestCitationDay: null,
+      latestCitationWeek: null,
+      weeklyAppointmentsDelta: null,
+      appointmentsByDay: [],
+      appointmentsByWeek: [],
       byTrainingDay: [],
       byGroup: [],
       byStage: [],
@@ -1986,6 +2088,114 @@ function buildCitationAnalysis(rows, mapping, totalProviders, trainedStage, offi
   const appointmentsPerProvider = providersWithCitation
     ? totalAppointments / providersWithCitation
     : 0
+  const normalizedContactStage = normalizeText(contactStage)
+  const providersScheduledAndCited =
+    mapping.stage && normalizedContactStage
+      ? new Set(
+          citationRows
+            .filter(
+              (row) =>
+                hasValue(row[mapping.stage]) &&
+                normalizeText(row[mapping.stage]) === normalizedContactStage,
+            )
+            .map((row) => String(row[mapping.providerId]).trim()),
+        ).size
+      : providersWithCitation
+  const citationDayMap = new Map()
+  const inferredCitationYear = inferCitationYear(scopedRows, mapping)
+
+  if (mapping.citationDay) {
+    citationRows.forEach((row) => {
+      const providerId = String(row[mapping.providerId]).trim()
+      const dayBuckets = parseTrainingDayBuckets(row[mapping.citationDay], inferredCitationYear)
+      if (!dayBuckets.length) {
+        return
+      }
+
+      dayBuckets.forEach(({ bucketKey, label, inferredYear: bucketInferredYear }) => {
+        if (!citationDayMap.has(bucketKey)) {
+          citationDayMap.set(bucketKey, {
+            label,
+            providers: new Set(),
+            inferredYear: Boolean(bucketInferredYear),
+            appointments: 0,
+          })
+        }
+
+        const bucket = citationDayMap.get(bucketKey)
+        bucket.providers.add(providerId)
+        bucket.inferredYear = bucket.inferredYear && Boolean(bucketInferredYear)
+        bucket.appointments += 1
+      })
+    })
+  }
+
+  applyRolloverToInferredDays(citationDayMap, inferredCitationYear)
+
+  const appointmentsByDay = Array.from(citationDayMap.entries())
+    .filter(([bucketKey]) => String(bucketKey).startsWith('0:'))
+    .sort((a, b) => {
+      const sortKeyA = getTrainingBucketSortKey(a[0])
+      const sortKeyB = getTrainingBucketSortKey(b[0])
+      return sortKeyA.localeCompare(sortKeyB)
+    })
+    .map(([bucketKey, bucket]) => {
+      const dayKey = String(bucketKey).slice(2)
+      return {
+        dayKey,
+        label: formatDayLabel(dayKey),
+        appointments: Number(bucket.appointments ?? 0),
+        providers: bucket.providers.size,
+      }
+    })
+
+  const weeklyCitationMap = new Map()
+  citationDayMap.forEach((bucket, bucketKey) => {
+    if (!String(bucketKey).startsWith('0:')) {
+      return
+    }
+
+    const dayKey = String(bucketKey).slice(2)
+    const weekStartDayKey = resolveWeekStartDayKey(dayKey)
+    if (!weekStartDayKey) {
+      return
+    }
+
+    if (!weeklyCitationMap.has(weekStartDayKey)) {
+      weeklyCitationMap.set(weekStartDayKey, {
+        weekStartDayKey,
+        label: formatWeekRangeLabel(weekStartDayKey),
+        appointments: 0,
+        providers: new Set(),
+      })
+    }
+
+    const weekBucket = weeklyCitationMap.get(weekStartDayKey)
+    weekBucket.appointments += Number(bucket.appointments ?? 0)
+    bucket.providers.forEach((providerId) => weekBucket.providers.add(providerId))
+  })
+
+  const appointmentsByWeek = Array.from(weeklyCitationMap.values())
+    .sort((a, b) => a.weekStartDayKey.localeCompare(b.weekStartDayKey))
+    .map((bucket) => ({
+      weekStartDayKey: bucket.weekStartDayKey,
+      label: bucket.label,
+      appointments: bucket.appointments,
+      providers: bucket.providers.size,
+    }))
+
+  const latestCitationDay = appointmentsByDay.length
+    ? appointmentsByDay[appointmentsByDay.length - 1]
+    : null
+  const latestCitationWeek = appointmentsByWeek.length
+    ? appointmentsByWeek[appointmentsByWeek.length - 1]
+    : null
+  const previousCitationWeek =
+    appointmentsByWeek.length > 1 ? appointmentsByWeek[appointmentsByWeek.length - 2] : null
+  const weeklyAppointmentsDelta =
+    latestCitationWeek && previousCitationWeek
+      ? latestCitationWeek.appointments - previousCitationWeek.appointments
+      : null
 
   const aggregateCounts = (values) => {
     const counts = values.reduce((accumulator, value) => {
@@ -2094,6 +2304,8 @@ function buildCitationAnalysis(rows, mapping, totalProviders, trainedStage, offi
   return {
     totalAppointments,
     providersWithCitation,
+    providersScheduledAndCited,
+    contactStageLabel: String(contactStage ?? ''),
     trainedByCitation,
     trainedByStage,
     trainedWithoutTrainingDay,
@@ -2104,6 +2316,13 @@ function buildCitationAnalysis(rows, mapping, totalProviders, trainedStage, offi
     trainedByTrainingDay,
     totalTrainingAttendances,
     providersWithMultipleTrainingDays,
+    activeCitationDays: appointmentsByDay.length,
+    activeCitationWeeks: appointmentsByWeek.length,
+    latestCitationDay,
+    latestCitationWeek,
+    weeklyAppointmentsDelta,
+    appointmentsByDay,
+    appointmentsByWeek,
     byTrainingDay,
     byGroup: aggregateCounts(snapshotValues.map((item) => item.group)).sort((a, b) =>
       compareGroupLabelsAsc(a.label, b.label),
@@ -2632,10 +2851,18 @@ function ExcelDashboardLoader() {
         rows,
         mapping,
         contactMetrics.totalProviders,
+        contactStage,
         trainedStage,
         effectiveOfficialProviderIdSet,
       ),
-    [contactMetrics.totalProviders, effectiveOfficialProviderIdSet, mapping, rows, trainedStage],
+    [
+      contactMetrics.totalProviders,
+      contactStage,
+      effectiveOfficialProviderIdSet,
+      mapping,
+      rows,
+      trainedStage,
+    ],
   )
 
   const snapshotCandidate = useMemo(() => {
@@ -2657,14 +2884,14 @@ function ExcelDashboardLoader() {
       trainedProviders: contactMetrics.trainedProviders,
       enrolledProviders: contactMetrics.enrolledProviders,
       rescuedProviders: rescuedMetrics.totalRescued,
-      citedProviders: citationMetrics.providersWithCitation,
+      citedProviders: citationMetrics.providersScheduledAndCited,
       trainingDaysCount: citationMetrics.trainingDaysCount,
       contactRate: Number(contactMetrics.contactRate.toFixed(1)),
       trainedRate: Number(contactMetrics.trainedRate.toFixed(1)),
       rescueRate: Number(rescuedMetrics.rescueRate.toFixed(1)),
     }
   }, [
-    citationMetrics.providersWithCitation,
+    citationMetrics.providersScheduledAndCited,
     citationMetrics.trainingDaysCount,
     contactMetrics.contactedProviders,
     contactMetrics.contactRate,
@@ -3382,6 +3609,7 @@ function ExcelDashboardLoader() {
         barChartFormatValue={(value) => `${value.toFixed(1)}%`}
         extraContent={
           <>
+            <CitationScheduleCard data={citationMetrics} />
             <EvolutionHistoryCard
               snapshots={dailyHistorySnapshots}
               selectedDayKey={snapshotDayKey}

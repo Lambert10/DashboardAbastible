@@ -836,10 +836,6 @@ function normalizeSnapshotsForTimeline(snapshots) {
         normalizedSnapshot.rescuedProviders,
         previousInSegment.rescuedProviders,
       )
-      normalizedSnapshot.citedProviders = Math.max(
-        normalizedSnapshot.citedProviders,
-        previousInSegment.citedProviders,
-      )
       normalizedSnapshot.trainingDaysCount = Math.max(
         normalizedSnapshot.trainingDaysCount,
         previousInSegment.trainingDaysCount,
