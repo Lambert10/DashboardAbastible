@@ -113,12 +113,12 @@
   color: #14803c;
 }
 
-.evolution-history-card__metric-change--down {
-  color: #b42318;
+.evolution-history-card__metric-change--empty {
+  color: transparent;
 }
 
-.evolution-history-card__metric-change--neutral {
-  color: #4f6e9f;
+.evolution-history-card__metric-change-placeholder {
+  visibility: hidden;
 }
 
 .evolution-history-card__delta {

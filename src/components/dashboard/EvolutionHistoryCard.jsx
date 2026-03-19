@@ -69,30 +69,22 @@ function renderBadgeDeltaValue(delta) {
 function renderMetricWithDelta(value, delta) {
   const numericValue = Number(value)
   const numericDelta = Number(delta)
-  const hasDelta = Number.isFinite(numericDelta)
-  const hasPositiveDelta = hasDelta && numericDelta > 0
-  const hasNegativeDelta = hasDelta && numericDelta < 0
+  const hasPositiveDelta = Number.isFinite(numericDelta) && numericDelta > 0
   const valueDisplay = Number.isFinite(numericValue) ? numericValue : 0
 
   return (
     <span className="evolution-history-card__metric">
       <span className="evolution-history-card__metric-value">{valueDisplay}</span>
       <span
-        className={`evolution-history-card__metric-change ${
-          hasPositiveDelta
-            ? 'evolution-history-card__metric-change--up'
-            : hasNegativeDelta
-              ? 'evolution-history-card__metric-change--down'
-              : 'evolution-history-card__metric-change--neutral'
-        }`}
+        className={`evolution-history-card__metric-change ${hasPositiveDelta ? 'evolution-history-card__metric-change--up' : 'evolution-history-card__metric-change--empty'}`}
       >
-        {hasDelta ? (
+        {hasPositiveDelta ? (
           <>
             <span>{formatSignedValue(numericDelta)}</span>
-            {hasPositiveDelta ? <i className="evolution-history-card__delta-arrow" aria-hidden="true" /> : null}
+            <i className="evolution-history-card__delta-arrow" aria-hidden="true" />
           </>
         ) : (
-          <span>--</span>
+          <span className="evolution-history-card__metric-change-placeholder">+0</span>
         )}
       </span>
     </span>
@@ -120,8 +112,33 @@ function resolveSegmentLabel(segment) {
   return '--'
 }
 
+function normalizeSnapshotsForDisplay(sortedSnapshots) {
+  const previousCitedBySegment = new Map()
+
+  return sortedSnapshots.map((snapshot) => {
+    const segmentKey = String(snapshot?.timelineSegment ?? 'unknown')
+    const citedProviders = Number(snapshot?.citedProviders ?? 0)
+    const previousCited = previousCitedBySegment.get(segmentKey)
+    const normalizedCitedProviders =
+      Number.isFinite(previousCited) && Number.isFinite(citedProviders)
+        ? Math.max(previousCited, citedProviders)
+        : Number.isFinite(citedProviders)
+          ? citedProviders
+          : 0
+
+    previousCitedBySegment.set(segmentKey, normalizedCitedProviders)
+
+    return {
+      ...snapshot,
+      citedProviders: normalizedCitedProviders,
+    }
+  })
+}
+
 function EvolutionHistoryCard({ snapshots, selectedDayKey, onClearHistory, onExportHistoryCsv }) {
-  const orderedSnapshots = [...snapshots].sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+  const orderedSnapshots = normalizeSnapshotsForDisplay(
+    [...snapshots].sort((a, b) => a.dayKey.localeCompare(b.dayKey)),
+  )
   const latestSnapshot = orderedSnapshots[orderedSnapshots.length - 1]
   const selectedSnapshotIndex = selectedDayKey
     ? orderedSnapshots.findIndex((snapshot) => snapshot.dayKey === selectedDayKey)
