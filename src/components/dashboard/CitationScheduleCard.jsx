@@ -43,7 +43,7 @@ function CitationScheduleBars({ title, rows, emptyLabel }) {
               </div>
               <div className="citation-schedule-card__metric">
                 <strong>{row.appointments}</strong>
-                <small>{row.providers} prov.</small>
+                <small>{row.providers} prov. unicos</small>
               </div>
             </div>
           ))}
