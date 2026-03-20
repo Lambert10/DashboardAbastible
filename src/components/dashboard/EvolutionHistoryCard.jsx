@@ -137,6 +137,7 @@ function normalizeSnapshotsForDisplay(sortedSnapshots) {
 
 function EvolutionHistoryCard({
   snapshots,
+  citationDailyByDayKey,
   selectedDayKey,
   onClearHistory,
   onExportHistoryCsv,
@@ -192,7 +193,15 @@ function EvolutionHistoryCard({
           {orderedSnapshots.map((snapshot, index) => {
             const deltaTrained = resolveDeltaTrained(orderedSnapshots, index)
             const deltaContacted = resolveDeltaByKey(orderedSnapshots, index, 'contactedProviders')
-            const deltaCited = resolveDeltaByKey(orderedSnapshots, index, 'citedProviders')
+            const deltaCitedByAccumulated = resolveDeltaByKey(orderedSnapshots, index, 'citedProviders')
+            const deltaCitedByDay = Number(citationDailyByDayKey?.[snapshot.dayKey] ?? 0)
+            const deltaCited =
+              index > 0
+                ? Math.max(
+                    Number.isFinite(deltaCitedByAccumulated) ? deltaCitedByAccumulated : 0,
+                    Number.isFinite(deltaCitedByDay) ? deltaCitedByDay : 0,
+                  )
+                : null
 
             return (
               <div key={snapshot.dayKey} className="evolution-history-card__row">

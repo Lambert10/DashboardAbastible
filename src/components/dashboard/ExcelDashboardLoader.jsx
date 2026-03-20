@@ -2880,6 +2880,13 @@ function ExcelDashboardLoader() {
       trainedStage,
     ],
   )
+  const citationDailyByDayKey = useMemo(
+    () =>
+      Object.fromEntries(
+        (citationMetrics?.appointmentsByDay ?? []).map((row) => [String(row.dayKey), Number(row.appointments ?? 0)]),
+      ),
+    [citationMetrics],
+  )
 
   const snapshotCandidate = useMemo(() => {
     if (
@@ -3628,6 +3635,7 @@ function ExcelDashboardLoader() {
             <CitationScheduleCard data={citationMetrics} />
             <EvolutionHistoryCard
               snapshots={dailyHistorySnapshots}
+              citationDailyByDayKey={citationDailyByDayKey}
               selectedDayKey={snapshotDayKey}
               onClearHistory={handleClearDailyHistory}
               onExportHistoryCsv={handleExportDailyHistoryCsv}
