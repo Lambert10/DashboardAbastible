@@ -1,5 +1,14 @@
 import './CitationScheduleCard.css'
 
+function formatDayLabel(dayKey) {
+  const [year, month, day] = String(dayKey).split('-')
+  if (!year || !month || !day) {
+    return String(dayKey ?? '')
+  }
+
+  return `${day}/${month}/${year}`
+}
+
 function formatSignedValue(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) {
@@ -65,12 +74,16 @@ function CitationScheduleCard({ data }) {
     ? `${data.latestCitationWeek.label} (${data.latestCitationWeek.appointments})`
     : 'Sin datos'
   const weeklyDelta = formatWeeklyDelta(data?.weeklyAppointmentsDelta)
+  const cutoffLabel = data?.citationCutoffDayKey
+    ? formatDayLabel(data.citationCutoffDayKey)
+    : 'Sin corte'
 
   return (
     <article className="citation-schedule-card">
       <header className="citation-schedule-card__header">
         <h3>Analisis de citados (Fecha de citacion)</h3>
         <div className="citation-schedule-card__badges">
+          <span>Corte: {cutoffLabel}</span>
           <span>Agendas: {data?.totalAppointments ?? 0}</span>
           <span>Dias activos: {data?.activeCitationDays ?? 0}</span>
           <span>Semanas activas: {data?.activeCitationWeeks ?? 0}</span>

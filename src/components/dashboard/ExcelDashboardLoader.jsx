@@ -2021,6 +2021,7 @@ function buildCitationAnalysis(
   rows,
   mapping,
   totalProviders,
+  snapshotDayKey,
   contactStage,
   trainedStage,
   officialProviderIdSet,
@@ -2031,6 +2032,7 @@ function buildCitationAnalysis(
       providersWithCitation: 0,
       providersScheduledAndCited: 0,
       contactStageLabel: String(contactStage ?? ''),
+      citationCutoffDayKey: isValidDayKey(snapshotDayKey) ? String(snapshotDayKey) : '',
       trainedByCitation: 0,
       trainedByStage: 0,
       trainedWithoutTrainingDay: 0,
@@ -2067,10 +2069,18 @@ function buildCitationAnalysis(
     const providerId = String(row[mapping.providerId]).trim()
     return officialProviderIdSet.has(providerId)
   })
-
-  const citationAppointmentRows = mapping.citationDay
+  const citationCutoffDayKey = isValidDayKey(snapshotDayKey) ? String(snapshotDayKey) : ''
+  const inferredCitationYear = inferCitationYear(scopedRows, mapping)
+  const citationRowsUnbounded = mapping.citationDay
     ? scopedRows.filter((row) => hasValue(row[mapping.citationDay]))
     : []
+
+  const citationAppointmentRows = citationCutoffDayKey
+    ? citationRowsUnbounded.filter((row) => {
+        const citationDayKey = parseDayKey(row[mapping.citationDay], inferredCitationYear)
+        return citationDayKey && citationDayKey <= citationCutoffDayKey
+      })
+    : citationRowsUnbounded
   const citationRows = citationAppointmentRows.filter((row) => hasValue(row[mapping.providerId]))
 
   const totalAppointments = citationAppointmentRows.length
@@ -2104,7 +2114,6 @@ function buildCitationAnalysis(
         ).size
       : providersWithCitation
   const citationDayMap = new Map()
-  const inferredCitationYear = inferCitationYear(scopedRows, mapping)
 
   if (mapping.citationDay) {
     citationAppointmentRows.forEach((row) => {
@@ -2311,6 +2320,7 @@ function buildCitationAnalysis(
     providersWithCitation,
     providersScheduledAndCited,
     contactStageLabel: String(contactStage ?? ''),
+    citationCutoffDayKey,
     trainedByCitation,
     trainedByStage,
     trainedWithoutTrainingDay,
@@ -2856,12 +2866,14 @@ function ExcelDashboardLoader() {
         rows,
         mapping,
         contactMetrics.totalProviders,
+        snapshotDayKey,
         contactStage,
         trainedStage,
         effectiveOfficialProviderIdSet,
       ),
     [
       contactMetrics.totalProviders,
+      snapshotDayKey,
       contactStage,
       effectiveOfficialProviderIdSet,
       mapping,
