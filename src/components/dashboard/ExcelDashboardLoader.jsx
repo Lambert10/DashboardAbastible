@@ -1924,6 +1924,76 @@ function buildGroupContactSummary(rows, mapping, contactStage, trainedStage, off
   }
 }
 
+function buildTrainedReconciliation(rows, mapping, trainedStage, officialProviderIdSet) {
+  const empty = {
+    trainedInFile: 0,
+    trainedInDashboard: 0,
+    excludedByScope: 0,
+    excludedByUniverse: 0,
+    skippedWithoutProviderId: 0,
+  }
+
+  if (!mapping.providerId || !mapping.stage || !trainedStage) {
+    return empty
+  }
+
+  const normalizedTrainedStage = normalizeText(trainedStage)
+  if (!normalizedTrainedStage) {
+    return empty
+  }
+
+  const trainedInFileSet = new Set()
+  const trainedInDashboardSet = new Set()
+  const excludedByScopeSet = new Set()
+  const excludedByUniverseSet = new Set()
+  let skippedWithoutProviderId = 0
+
+  rows.forEach((row) => {
+    if (!hasValue(row[mapping.stage])) {
+      return
+    }
+
+    const stageValue = normalizeText(row[mapping.stage])
+    if (stageValue !== normalizedTrainedStage) {
+      return
+    }
+
+    if (!hasValue(row[mapping.providerId])) {
+      skippedWithoutProviderId += 1
+      return
+    }
+
+    const providerId = String(row[mapping.providerId]).trim()
+    if (!providerId) {
+      skippedWithoutProviderId += 1
+      return
+    }
+
+    trainedInFileSet.add(providerId)
+
+    const projectScope = resolveProjectScopeForRow(row, mapping)
+    if (!projectScope.included) {
+      excludedByScopeSet.add(providerId)
+      return
+    }
+
+    if (officialProviderIdSet?.size && !officialProviderIdSet.has(providerId)) {
+      excludedByUniverseSet.add(providerId)
+      return
+    }
+
+    trainedInDashboardSet.add(providerId)
+  })
+
+  return {
+    trainedInFile: trainedInFileSet.size,
+    trainedInDashboard: trainedInDashboardSet.size,
+    excludedByScope: excludedByScopeSet.size,
+    excludedByUniverse: excludedByUniverseSet.size,
+    skippedWithoutProviderId,
+  }
+}
+
 function buildRescuedAnalysis(rows, mapping, totalProviders, contactStage, officialProviderIdSet) {
   if (!mapping.providerId || !mapping.rescuedBy) {
     return {
@@ -2952,6 +3022,10 @@ function ExcelDashboardLoader() {
       ),
     [contactStage, effectiveOfficialProviderIdSet, mapping, rows, trainedStage],
   )
+  const trainedReconciliation = useMemo(
+    () => buildTrainedReconciliation(rows, mapping, trainedStage, effectiveOfficialProviderIdSet),
+    [effectiveOfficialProviderIdSet, mapping, rows, trainedStage],
+  )
 
   const rescuedMetrics = useMemo(
     () =>
@@ -3586,6 +3660,13 @@ function ExcelDashboardLoader() {
             Conteo proveedores: {resolveProviderIdentityKind(mapping.providerId)} (columna{' '}
             {mapping.providerId || 'sin mapear'}) | Conteo citaciones: celdas validas en{' '}
             {mapping.citationDay || 'sin mapear'} (cada fila cuenta como 1 agenda)
+          </p>
+          <p>
+            Capacitados ({trainedStage || 'sin etapa seleccionada'}): archivo{' '}
+            {trainedReconciliation.trainedInFile} | dashboard {trainedReconciliation.trainedInDashboard} |
+            excluidos alcance {trainedReconciliation.excludedByScope} | excluidos universo{' '}
+            {trainedReconciliation.excludedByUniverse} | sin ID{' '}
+            {trainedReconciliation.skippedWithoutProviderId}
           </p>
           {dataQualityProfile.officialUniverseSize ? (
             <p>
