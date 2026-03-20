@@ -112,12 +112,15 @@ function resolveSegmentLabel(segment) {
   return '--'
 }
 
-function normalizeSnapshotsForDisplay(sortedSnapshots) {
+function normalizeSnapshotsForDisplay(sortedSnapshots, citationCumulativeBySnapshotDay = null) {
   const previousCitedBySegment = new Map()
 
   return sortedSnapshots.map((snapshot) => {
     const segmentKey = String(snapshot?.timelineSegment ?? 'unknown')
-    const citedProviders = Number(snapshot?.citedProviders ?? 0)
+    const citedOverride = Number(citationCumulativeBySnapshotDay?.[snapshot?.dayKey])
+    const citedProviders = Number.isFinite(citedOverride)
+      ? citedOverride
+      : Number(snapshot?.citedProviders ?? 0)
     const previousCited = previousCitedBySegment.get(segmentKey)
     const normalizedCitedProviders =
       Number.isFinite(previousCited) && Number.isFinite(citedProviders)
@@ -137,13 +140,14 @@ function normalizeSnapshotsForDisplay(sortedSnapshots) {
 
 function EvolutionHistoryCard({
   snapshots,
-  citationDailyByDayKey,
+  citationCumulativeBySnapshotDay,
   selectedDayKey,
   onClearHistory,
   onExportHistoryCsv,
 }) {
   const orderedSnapshots = normalizeSnapshotsForDisplay(
     [...snapshots].sort((a, b) => a.dayKey.localeCompare(b.dayKey)),
+    citationCumulativeBySnapshotDay,
   )
   const latestSnapshot = orderedSnapshots[orderedSnapshots.length - 1]
   const selectedSnapshotIndex = selectedDayKey
@@ -193,15 +197,7 @@ function EvolutionHistoryCard({
           {orderedSnapshots.map((snapshot, index) => {
             const deltaTrained = resolveDeltaTrained(orderedSnapshots, index)
             const deltaContacted = resolveDeltaByKey(orderedSnapshots, index, 'contactedProviders')
-            const deltaCitedByAccumulated = resolveDeltaByKey(orderedSnapshots, index, 'citedProviders')
-            const deltaCitedByDay = Number(citationDailyByDayKey?.[snapshot.dayKey] ?? 0)
-            const deltaCited =
-              index > 0
-                ? Math.max(
-                    Number.isFinite(deltaCitedByAccumulated) ? deltaCitedByAccumulated : 0,
-                    Number.isFinite(deltaCitedByDay) ? deltaCitedByDay : 0,
-                  )
-                : null
+            const deltaCited = resolveDeltaByKey(orderedSnapshots, index, 'citedProviders')
 
             return (
               <div key={snapshot.dayKey} className="evolution-history-card__row">

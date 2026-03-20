@@ -2345,6 +2345,91 @@ function buildCitationAnalysis(
   }
 }
 
+function buildCitationAppointmentsCumulativeBySnapshotDay(
+  rows,
+  mapping,
+  officialProviderIdSet,
+  snapshotDayKeys,
+  cutoffDayKey = '',
+) {
+  const validSnapshotDayKeys = Array.isArray(snapshotDayKeys)
+    ? snapshotDayKeys
+        .map((dayKey) => String(dayKey ?? ''))
+        .filter((dayKey) => isValidDayKey(dayKey))
+        .sort((a, b) => a.localeCompare(b))
+    : []
+
+  if (!mapping.citationDay || !validSnapshotDayKeys.length) {
+    return {}
+  }
+
+  const scopedRows = rows.filter((row) => {
+    const projectScope = resolveProjectScopeForRow(row, mapping)
+    if (!projectScope.included) {
+      return false
+    }
+
+    if (!officialProviderIdSet?.size || !mapping.providerId || !hasValue(row[mapping.providerId])) {
+      return true
+    }
+
+    const providerId = String(row[mapping.providerId]).trim()
+    return officialProviderIdSet.has(providerId)
+  })
+
+  const inferredCitationYear = inferCitationYear(scopedRows, mapping)
+  const appointmentsByCitationDay = new Map()
+
+  scopedRows.forEach((row) => {
+    if (!hasValue(row[mapping.citationDay])) {
+      return
+    }
+
+    const citationDayKey = parseDayKey(row[mapping.citationDay], inferredCitationYear)
+    if (!isValidDayKey(citationDayKey)) {
+      return
+    }
+
+    appointmentsByCitationDay.set(
+      citationDayKey,
+      (appointmentsByCitationDay.get(citationDayKey) ?? 0) + 1,
+    )
+  })
+
+  const citationDaysSorted = Array.from(appointmentsByCitationDay.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([dayKey, appointments]) => ({
+      dayKey,
+      appointments,
+    }))
+
+  if (!citationDaysSorted.length) {
+    return {}
+  }
+
+  const maxCutoff = isValidDayKey(cutoffDayKey) ? cutoffDayKey : ''
+  const output = {}
+  let citationCursor = 0
+  let currentCumulative = 0
+
+  validSnapshotDayKeys.forEach((snapshotDayKey) => {
+    const effectiveSnapshotDayKey =
+      maxCutoff && snapshotDayKey > maxCutoff ? maxCutoff : snapshotDayKey
+
+    while (
+      citationCursor < citationDaysSorted.length &&
+      citationDaysSorted[citationCursor].dayKey <= effectiveSnapshotDayKey
+    ) {
+      currentCumulative += citationDaysSorted[citationCursor].appointments
+      citationCursor += 1
+    }
+
+    output[snapshotDayKey] = currentCumulative
+  })
+
+  return output
+}
+
 function ExcelDashboardLoader() {
   const xlsxRef = useRef(null)
   const workbookRef = useRef(null)
@@ -2880,12 +2965,22 @@ function ExcelDashboardLoader() {
       trainedStage,
     ],
   )
-  const citationDailyByDayKey = useMemo(
+  const citationCumulativeBySnapshotDay = useMemo(
     () =>
-      Object.fromEntries(
-        (citationMetrics?.appointmentsByDay ?? []).map((row) => [String(row.dayKey), Number(row.appointments ?? 0)]),
+      buildCitationAppointmentsCumulativeBySnapshotDay(
+        rows,
+        mapping,
+        effectiveOfficialProviderIdSet,
+        dailyHistorySnapshots.map((snapshot) => snapshot.dayKey),
+        snapshotDayKey,
       ),
-    [citationMetrics],
+    [
+      dailyHistorySnapshots,
+      effectiveOfficialProviderIdSet,
+      mapping,
+      rows,
+      snapshotDayKey,
+    ],
   )
 
   const snapshotCandidate = useMemo(() => {
@@ -3635,7 +3730,7 @@ function ExcelDashboardLoader() {
             <CitationScheduleCard data={citationMetrics} />
             <EvolutionHistoryCard
               snapshots={dailyHistorySnapshots}
-              citationDailyByDayKey={citationDailyByDayKey}
+              citationCumulativeBySnapshotDay={citationCumulativeBySnapshotDay}
               selectedDayKey={snapshotDayKey}
               onClearHistory={handleClearDailyHistory}
               onExportHistoryCsv={handleExportDailyHistoryCsv}
