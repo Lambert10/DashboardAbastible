@@ -1404,7 +1404,6 @@ function validateSnapshotChronology(snapshots, snapshotCandidate) {
     { key: 'contactedProviders', label: 'Contactados' },
     { key: 'trainedProviders', label: 'Capacitados' },
     { key: 'rescuedProviders', label: 'Rescatados' },
-    { key: 'citedProviders', label: 'Citados' },
   ]
 
   if (snapshotCandidate.contactedProviders < snapshotCandidate.trainedProviders) {
