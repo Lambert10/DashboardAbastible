@@ -2117,12 +2117,14 @@ function buildCitationAnalysis(
       citationCutoffDayKey: isValidDayKey(snapshotDayKey) ? String(snapshotDayKey) : '',
       trainedByCitation: 0,
       trainedByStage: 0,
+      trainedByStageWithoutProviderId: 0,
       trainedWithoutTrainingDay: 0,
       stageCoverageRate: 0,
       coverageRate: 0,
       appointmentsPerProvider: 0,
       trainingDaysCount: 0,
       trainedByTrainingDay: 0,
+      trainedByTrainingDayWithoutProviderId: 0,
       totalTrainingAttendances: 0,
       providersWithMultipleTrainingDays: 0,
       activeCitationDays: 0,
@@ -2151,27 +2153,34 @@ function buildCitationAnalysis(
     const providerId = String(row[mapping.providerId]).trim()
     return officialProviderIdSet.has(providerId)
   })
+  const scopedRowsWithProviderKey = scopedRows.map((row, rowIndex) => {
+    const rawProviderId = hasValue(row[mapping.providerId]) ? String(row[mapping.providerId]).trim() : ''
+    const hasProviderId = Boolean(rawProviderId)
+    return {
+      row,
+      hasProviderId,
+      providerKey: hasProviderId ? rawProviderId : `__NO_ID_ROW__${rowIndex}`,
+    }
+  })
   const citationCutoffDayKey = isValidDayKey(snapshotDayKey) ? String(snapshotDayKey) : ''
   const inferredCitationYear = inferCitationYear(scopedRows, mapping)
   const citationRowsUnbounded = mapping.citationDay
-    ? scopedRows.filter((row) => hasValue(row[mapping.citationDay]))
+    ? scopedRowsWithProviderKey.filter(({ row }) => hasValue(row[mapping.citationDay]))
     : []
 
   const citationAppointmentRows = citationCutoffDayKey
-    ? citationRowsUnbounded.filter((row) => {
+    ? citationRowsUnbounded.filter(({ row }) => {
         const citationDayKey = parseDayKey(row[mapping.citationDay], inferredCitationYear)
         return citationDayKey && citationDayKey <= citationCutoffDayKey
       })
     : citationRowsUnbounded
-  const citationRows = citationAppointmentRows.filter((row) => hasValue(row[mapping.providerId]))
 
   const totalAppointments = citationAppointmentRows.length
   const providerSnapshots = new Map()
 
-  citationRows.forEach((row) => {
-    const providerId = String(row[mapping.providerId]).trim()
+  citationAppointmentRows.forEach(({ row, providerKey }) => {
     const projectScope = resolveProjectScopeForRow(row, mapping)
-    providerSnapshots.set(providerId, {
+    providerSnapshots.set(providerKey, {
       group: projectScope.groupLabel,
       stage:
         mapping.stage && hasValue(row[mapping.stage]) ? String(row[mapping.stage]).trim() : 'Sin etapa',
@@ -2186,21 +2195,19 @@ function buildCitationAnalysis(
   const providersScheduledAndCited =
     mapping.stage && normalizedContactStage
       ? new Set(
-          citationRows
+          citationAppointmentRows
             .filter(
-              (row) =>
+              ({ row }) =>
                 hasValue(row[mapping.stage]) &&
                 normalizeText(row[mapping.stage]) === normalizedContactStage,
             )
-            .map((row) => String(row[mapping.providerId]).trim()),
+            .map(({ providerKey }) => providerKey),
         ).size
       : providersWithCitation
   const citationDayMap = new Map()
 
   if (mapping.citationDay) {
-    citationAppointmentRows.forEach((row) => {
-      const hasProviderId = hasValue(row[mapping.providerId])
-      const providerId = hasProviderId ? String(row[mapping.providerId]).trim() : ''
+    citationAppointmentRows.forEach(({ row, providerKey }) => {
       const dayBuckets = parseTrainingDayBuckets(row[mapping.citationDay], inferredCitationYear)
       if (!dayBuckets.length) {
         return
@@ -2217,9 +2224,7 @@ function buildCitationAnalysis(
         }
 
         const bucket = citationDayMap.get(bucketKey)
-        if (providerId) {
-          bucket.providers.add(providerId)
-        }
+        bucket.providers.add(providerKey)
         bucket.inferredYear = bucket.inferredYear && Boolean(bucketInferredYear)
         bucket.appointments += 1
       })
@@ -2316,8 +2321,8 @@ function buildCitationAnalysis(
   const normalizedTrainedStage = normalizeText(trainedStage)
 
   if (mapping.stage && normalizedTrainedStage) {
-    scopedRows.forEach((row) => {
-      if (!hasValue(row[mapping.providerId]) || !hasValue(row[mapping.stage])) {
+    scopedRowsWithProviderKey.forEach(({ row, providerKey }) => {
+      if (!hasValue(row[mapping.stage])) {
         return
       }
 
@@ -2326,18 +2331,16 @@ function buildCitationAnalysis(
         return
       }
 
-      const providerId = String(row[mapping.providerId]).trim()
-      trainedProvidersFromStage.add(providerId)
+      trainedProvidersFromStage.add(providerKey)
     })
   }
 
   if (mapping.trainingDay) {
-    scopedRows.forEach((row) => {
-      if (!hasValue(row[mapping.providerId]) || !hasValue(row[mapping.trainingDay])) {
+    scopedRowsWithProviderKey.forEach(({ row, providerKey }) => {
+      if (!hasValue(row[mapping.trainingDay])) {
         return
       }
 
-      const providerId = String(row[mapping.providerId]).trim()
       const dayBuckets = parseTrainingDayBuckets(row[mapping.trainingDay], inferredTrainingYear)
       if (!dayBuckets.length) {
         return
@@ -2353,15 +2356,15 @@ function buildCitationAnalysis(
         }
 
         const bucket = trainingDayMap.get(bucketKey)
-        bucket.providers.add(providerId)
+        bucket.providers.add(providerKey)
         bucket.inferredYear = bucket.inferredYear && Boolean(bucketInferredYear)
 
-        if (!trainingBucketsByProvider.has(providerId)) {
-          trainingBucketsByProvider.set(providerId, new Set())
+        if (!trainingBucketsByProvider.has(providerKey)) {
+          trainingBucketsByProvider.set(providerKey, new Set())
         }
-        trainingBucketsByProvider.get(providerId).add(bucketKey)
+        trainingBucketsByProvider.get(providerKey).add(bucketKey)
       })
-      trainedProvidersFromDay.add(providerId)
+      trainedProvidersFromDay.add(providerKey)
     })
   }
 
@@ -2384,6 +2387,12 @@ function buildCitationAnalysis(
   )
   const trainedByTrainingDay = trainedProvidersFromDay.size
   const trainedByStage = trainedProvidersFromStage.size
+  const trainedByStageWithoutProviderId = Array.from(trainedProvidersFromStage).filter((providerKey) =>
+    String(providerKey).startsWith('__NO_ID_ROW__'),
+  ).length
+  const trainedByTrainingDayWithoutProviderId = Array.from(trainedProvidersFromDay).filter(
+    (providerKey) => String(providerKey).startsWith('__NO_ID_ROW__'),
+  ).length
   let trainedWithoutTrainingDay = 0
   trainedProvidersFromStage.forEach((providerId) => {
     if (!trainedProvidersFromDay.has(providerId)) {
@@ -2405,12 +2414,14 @@ function buildCitationAnalysis(
     citationCutoffDayKey,
     trainedByCitation,
     trainedByStage,
+    trainedByStageWithoutProviderId,
     trainedWithoutTrainingDay,
     stageCoverageRate,
     coverageRate,
     appointmentsPerProvider,
     trainingDaysCount: trainingDayMap.size,
     trainedByTrainingDay,
+    trainedByTrainingDayWithoutProviderId,
     totalTrainingAttendances,
     providersWithMultipleTrainingDays,
     activeCitationDays: appointmentsByDay.length,

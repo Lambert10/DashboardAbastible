@@ -111,8 +111,14 @@ function CitationAnalysisCard({ data }) {
             {data.providersScheduledAndCited}
           </span>
           <span>Capacitados (etapa actual): {data.trainedByStage}</span>
+          {data.trainedByStageWithoutProviderId > 0 ? (
+            <span>Capacitados sin ID (etapa actual): {data.trainedByStageWithoutProviderId}</span>
+          ) : null}
           <span>Cobertura etapa actual: {data.stageCoverageRate.toFixed(1)}%</span>
           <span>Capacitados con Dia de Capacitacion: {data.trainedByTrainingDay}</span>
+          {data.trainedByTrainingDayWithoutProviderId > 0 ? (
+            <span>Capacitados sin ID (con dia): {data.trainedByTrainingDayWithoutProviderId}</span>
+          ) : null}
           <span>Cobertura con Dia de Capacitacion: {data.coverageRate.toFixed(1)}%</span>
           {showMissingTrainingDay ? (
             <span>Capacitados sin Dia de Capacitacion: {data.trainedWithoutTrainingDay}</span>
