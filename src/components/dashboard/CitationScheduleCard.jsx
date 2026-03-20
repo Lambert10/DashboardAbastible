@@ -96,6 +96,9 @@ function CitationScheduleCard({ data }) {
       <p className="citation-schedule-card__summary">
         Agendados diarios y semanales calculados desde la columna Fecha de citacion.
       </p>
+      <p className="citation-schedule-card__summary">
+        Metodo: cada fila con Fecha de citacion valida cuenta como 1 agenda.
+      </p>
 
       <div className="citation-schedule-card__grid">
         <CitationScheduleBars

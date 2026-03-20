@@ -885,6 +885,13 @@ function classifySnapshotTimeline(snapshot) {
     }
   }
 
+  if (totalProviders >= OFFICIAL_TARGET_TOTAL_PROVIDERS) {
+    return {
+      segment: 'official',
+      reason: `Universo oficial base >= ${OFFICIAL_TARGET_TOTAL_PROVIDERS} (admite IDs nuevos).`,
+    }
+  }
+
   if (isValidDayKey(dayKey) && dayKey <= LEGACY_SEGMENT_END_DAY_KEY) {
     return {
       segment: 'legacy',
@@ -924,7 +931,7 @@ function buildTimelineExplanation(timelineDecision, snapshotCandidate) {
   }
 
   if (timelineDecision?.segment === 'official') {
-    return `Este corte entra al tramo OFICIAL y se comparara con el universo objetivo ${OFFICIAL_TARGET_TOTAL_PROVIDERS} (tolerancia +/- ${OFFICIAL_TARGET_TOTAL_TOLERANCE}).`
+    return `Este corte entra al tramo OFICIAL con base minima ${OFFICIAL_TARGET_TOTAL_PROVIDERS}; puede crecer si aparecen IDs nuevos.`
   }
 
   return 'No se pudo determinar el tramo automaticamente.'
@@ -1106,6 +1113,19 @@ function formatDashboardSourceLabel(fileName, snapshotDayKey) {
   }
 
   return `${baseName} (${formatDayLabel(inferredDayKey)})`
+}
+
+function resolveProviderIdentityKind(mappedProviderColumn) {
+  const normalized = normalizeText(mappedProviderColumn)
+  if (!normalized) {
+    return 'Sin definir'
+  }
+
+  if (normalized.includes('rut')) {
+    return 'RUT'
+  }
+
+  return 'ID'
 }
 
 function normalizeDailyHistorySnapshot(item) {
@@ -1455,10 +1475,10 @@ function validateSnapshotChronology(snapshots, snapshotCandidate) {
 
   if (
     candidateDecision.segment === 'official' &&
-    snapshotCandidate.totalProviders > OFFICIAL_TARGET_TOTAL_PROVIDERS + OFFICIAL_TARGET_TOTAL_TOLERANCE
+    snapshotCandidate.totalProviders < OFFICIAL_TARGET_TOTAL_PROVIDERS
   ) {
     warnings.push(
-      `Tramo oficial: total ${snapshotCandidate.totalProviders} supera el universo objetivo ${OFFICIAL_TARGET_TOTAL_PROVIDERS} (+${OFFICIAL_TARGET_TOTAL_TOLERANCE} tolerancia).`,
+      `Tramo oficial: total ${snapshotCandidate.totalProviders} bajo la base minima esperada (${OFFICIAL_TARGET_TOTAL_PROVIDERS}).`,
     )
   }
 
@@ -1623,7 +1643,7 @@ function buildConsistencyQuestions({
       id: 'legacy-adapt-to-official',
       severity: 'high',
       required: true,
-      text: `Este archivo fue clasificado como LEGACY (${Math.round(toSafeNumber(snapshotCandidate.totalProviders))} proveedores). Quieres adaptarlo al universo OFICIAL (${OFFICIAL_TARGET_TOTAL_PROVIDERS}) antes de guardarlo?`,
+      text: `Este archivo fue clasificado como LEGACY (${Math.round(toSafeNumber(snapshotCandidate.totalProviders))} proveedores). Quieres adaptarlo al tramo OFICIAL (base ${OFFICIAL_TARGET_TOTAL_PROVIDERS}, admite IDs nuevos) antes de guardarlo?`,
     })
   }
 
@@ -3559,8 +3579,13 @@ function ExcelDashboardLoader() {
             Excluidas: {dataQualityProfile.excludedRowsByScope}
           </p>
           <p>
-            Proveedores unicos: {dataQualityProfile.totalProviders} | Cobertura ID:{' '}
+            Proveedores unicos: {dataQualityProfile.totalProviders} | Cobertura identificador:{' '}
             {(dataQualityProfile.providerCoverageRate * 100).toFixed(1)}%
+          </p>
+          <p>
+            Conteo proveedores: {resolveProviderIdentityKind(mapping.providerId)} (columna{' '}
+            {mapping.providerId || 'sin mapear'}) | Conteo citaciones: celdas validas en{' '}
+            {mapping.citationDay || 'sin mapear'} (cada fila cuenta como 1 agenda)
           </p>
           {dataQualityProfile.officialUniverseSize ? (
             <p>
