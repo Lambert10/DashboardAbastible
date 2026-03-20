@@ -2017,124 +2017,6 @@ function buildRescuedAnalysis(rows, mapping, totalProviders, contactStage, offic
   }
 }
 
-function buildCitedCumulativeBySnapshotDay(
-  rows,
-  mapping,
-  contactStage,
-  officialProviderIdSet,
-  snapshotDayKeys,
-) {
-  const validSnapshotDayKeys = Array.isArray(snapshotDayKeys)
-    ? snapshotDayKeys
-        .map((dayKey) => String(dayKey ?? ''))
-        .filter((dayKey) => isValidDayKey(dayKey))
-        .sort((a, b) => a.localeCompare(b))
-    : []
-
-  if (!mapping.providerId || !mapping.citationDay || !validSnapshotDayKeys.length) {
-    return {}
-  }
-
-  const normalizedContactStage = normalizeText(contactStage)
-  const scopedRows = rows.filter((row) => {
-    const projectScope = resolveProjectScopeForRow(row, mapping)
-    if (!projectScope.included) {
-      return false
-    }
-
-    if (!hasValue(row[mapping.providerId])) {
-      return false
-    }
-
-    const providerId = String(row[mapping.providerId]).trim()
-    if (officialProviderIdSet?.size && !officialProviderIdSet.has(providerId)) {
-      return false
-    }
-
-    if (mapping.stage && normalizedContactStage) {
-      if (!hasValue(row[mapping.stage])) {
-        return false
-      }
-
-      if (normalizeText(row[mapping.stage]) !== normalizedContactStage) {
-        return false
-      }
-    }
-
-    return hasValue(row[mapping.citationDay])
-  })
-
-  if (!scopedRows.length) {
-    return {}
-  }
-
-  const inferredCitationYear = inferCitationYear(scopedRows, mapping)
-  const citationDayMap = new Map()
-
-  scopedRows.forEach((row) => {
-    const providerId = String(row[mapping.providerId]).trim()
-    const dayBuckets = parseTrainingDayBuckets(row[mapping.citationDay], inferredCitationYear)
-    if (!dayBuckets.length) {
-      return
-    }
-
-    dayBuckets.forEach(({ bucketKey, label, inferredYear: bucketInferredYear }) => {
-      if (!citationDayMap.has(bucketKey)) {
-        citationDayMap.set(bucketKey, {
-          label,
-          providers: new Set(),
-          inferredYear: Boolean(bucketInferredYear),
-        })
-      }
-
-      const bucket = citationDayMap.get(bucketKey)
-      bucket.providers.add(providerId)
-      bucket.inferredYear = bucket.inferredYear && Boolean(bucketInferredYear)
-    })
-  })
-
-  applyRolloverToInferredDays(citationDayMap, inferredCitationYear)
-
-  const citationDaysSorted = Array.from(citationDayMap.entries())
-    .filter(([bucketKey]) => String(bucketKey).startsWith('0:'))
-    .sort((a, b) => getTrainingBucketSortKey(a[0]).localeCompare(getTrainingBucketSortKey(b[0])))
-    .map(([bucketKey, bucket]) => ({
-      dayKey: String(bucketKey).slice(2),
-      providers: bucket.providers,
-    }))
-
-  if (!citationDaysSorted.length) {
-    return {}
-  }
-
-  const cumulativeProviderSet = new Set()
-  const cumulativeByCitationDay = citationDaysSorted.map((item) => {
-    item.providers.forEach((providerId) => cumulativeProviderSet.add(providerId))
-    return {
-      dayKey: item.dayKey,
-      count: cumulativeProviderSet.size,
-    }
-  })
-
-  const output = {}
-  let citationCursor = 0
-  let currentCount = 0
-
-  validSnapshotDayKeys.forEach((snapshotDayKey) => {
-    while (
-      citationCursor < cumulativeByCitationDay.length &&
-      cumulativeByCitationDay[citationCursor].dayKey <= snapshotDayKey
-    ) {
-      currentCount = cumulativeByCitationDay[citationCursor].count
-      citationCursor += 1
-    }
-
-    output[snapshotDayKey] = currentCount
-  })
-
-  return output
-}
-
 function buildCitationAnalysis(
   rows,
   mapping,
@@ -3000,18 +2882,6 @@ function ExcelDashboardLoader() {
     ],
   )
 
-  const citedCumulativeBySnapshotDay = useMemo(
-    () =>
-      buildCitedCumulativeBySnapshotDay(
-        rows,
-        mapping,
-        contactStage,
-        effectiveOfficialProviderIdSet,
-        dailyHistorySnapshots.map((snapshot) => snapshot.dayKey),
-      ),
-    [contactStage, dailyHistorySnapshots, effectiveOfficialProviderIdSet, mapping, rows],
-  )
-
   const snapshotCandidate = useMemo(() => {
     if (
       !rows.length ||
@@ -3759,7 +3629,6 @@ function ExcelDashboardLoader() {
             <CitationScheduleCard data={citationMetrics} />
             <EvolutionHistoryCard
               snapshots={dailyHistorySnapshots}
-              citedCumulativeBySnapshotDay={citedCumulativeBySnapshotDay}
               selectedDayKey={snapshotDayKey}
               onClearHistory={handleClearDailyHistory}
               onExportHistoryCsv={handleExportDailyHistoryCsv}
