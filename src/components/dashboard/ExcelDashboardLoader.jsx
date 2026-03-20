@@ -1814,20 +1814,18 @@ function buildGroupContactSummary(rows, mapping, contactStage, trainedStage, off
   const normalizedContactStage = normalizeText(contactStage)
   const normalizedTrainedStage = normalizeText(trainedStage)
 
-  rows.forEach((row) => {
-    if (!hasValue(row[mapping.providerId])) {
-      return
-    }
-
+  rows.forEach((row, rowIndex) => {
     const projectScope = resolveProjectScopeForRow(row, mapping)
     if (!projectScope.included) {
       return
     }
 
-    const providerId = String(row[mapping.providerId]).trim()
-    if (officialProviderIdSet?.size && !officialProviderIdSet.has(providerId)) {
+    const rawProviderId = hasValue(row[mapping.providerId]) ? String(row[mapping.providerId]).trim() : ''
+    const hasProviderId = Boolean(rawProviderId)
+    if (hasProviderId && officialProviderIdSet?.size && !officialProviderIdSet.has(rawProviderId)) {
       return
     }
+    const providerId = hasProviderId ? rawProviderId : `__NO_ID_ROW__${rowIndex}`
 
     const groupValue = projectScope.groupLabel
     const stageValue = mapping.stage && hasValue(row[mapping.stage]) ? normalizeText(row[mapping.stage]) : ''
@@ -1930,7 +1928,7 @@ function buildTrainedReconciliation(rows, mapping, trainedStage, officialProvide
     trainedInDashboard: 0,
     excludedByScope: 0,
     excludedByUniverse: 0,
-    skippedWithoutProviderId: 0,
+    includedWithoutProviderId: 0,
   }
 
   if (!mapping.providerId || !mapping.stage || !trainedStage) {
@@ -1946,9 +1944,9 @@ function buildTrainedReconciliation(rows, mapping, trainedStage, officialProvide
   const trainedInDashboardSet = new Set()
   const excludedByScopeSet = new Set()
   const excludedByUniverseSet = new Set()
-  let skippedWithoutProviderId = 0
+  let includedWithoutProviderId = 0
 
-  rows.forEach((row) => {
+  rows.forEach((row, rowIndex) => {
     if (!hasValue(row[mapping.stage])) {
       return
     }
@@ -1958,18 +1956,13 @@ function buildTrainedReconciliation(rows, mapping, trainedStage, officialProvide
       return
     }
 
-    if (!hasValue(row[mapping.providerId])) {
-      skippedWithoutProviderId += 1
-      return
-    }
-
-    const providerId = String(row[mapping.providerId]).trim()
-    if (!providerId) {
-      skippedWithoutProviderId += 1
-      return
-    }
-
+    const rawProviderId = hasValue(row[mapping.providerId]) ? String(row[mapping.providerId]).trim() : ''
+    const hasProviderId = Boolean(rawProviderId)
+    const providerId = hasProviderId ? rawProviderId : `__NO_ID_ROW__${rowIndex}`
     trainedInFileSet.add(providerId)
+    if (!hasProviderId) {
+      includedWithoutProviderId += 1
+    }
 
     const projectScope = resolveProjectScopeForRow(row, mapping)
     if (!projectScope.included) {
@@ -1977,7 +1970,7 @@ function buildTrainedReconciliation(rows, mapping, trainedStage, officialProvide
       return
     }
 
-    if (officialProviderIdSet?.size && !officialProviderIdSet.has(providerId)) {
+    if (hasProviderId && officialProviderIdSet?.size && !officialProviderIdSet.has(providerId)) {
       excludedByUniverseSet.add(providerId)
       return
     }
@@ -1990,7 +1983,7 @@ function buildTrainedReconciliation(rows, mapping, trainedStage, officialProvide
     trainedInDashboard: trainedInDashboardSet.size,
     excludedByScope: excludedByScopeSet.size,
     excludedByUniverse: excludedByUniverseSet.size,
-    skippedWithoutProviderId,
+    includedWithoutProviderId,
   }
 }
 
@@ -3665,8 +3658,8 @@ function ExcelDashboardLoader() {
             Capacitados ({trainedStage || 'sin etapa seleccionada'}): archivo{' '}
             {trainedReconciliation.trainedInFile} | dashboard {trainedReconciliation.trainedInDashboard} |
             excluidos alcance {trainedReconciliation.excludedByScope} | excluidos universo{' '}
-            {trainedReconciliation.excludedByUniverse} | sin ID{' '}
-            {trainedReconciliation.skippedWithoutProviderId}
+            {trainedReconciliation.excludedByUniverse} | incluidos sin ID{' '}
+            {trainedReconciliation.includedWithoutProviderId}
           </p>
           {dataQualityProfile.officialUniverseSize ? (
             <p>
