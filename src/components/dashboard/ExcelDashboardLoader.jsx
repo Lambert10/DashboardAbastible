@@ -56,6 +56,7 @@ const FIELD_ALIASES = {
   enrolled: ['enrolado', 'enrolled'],
   citationDay: ['dia de citacion', 'dia citacion', 'fecha de citacion'],
   trainingDay: ['dia de capacitacion', 'dia capacitacion', 'fecha de capacitacion'],
+  lastContactDay: ['fecha ultimo contacto', 'fecha de ultimo contacto', 'ultimo contacto', 'last contact'],
   name: ['name', 'nombre'],
   providerId: ['id proveedor', 'id_provider', 'provider id'],
   rescuedBy: ['rescatado por', 'rescado por', 'rescate by'],
@@ -2524,6 +2525,164 @@ function buildCitationAppointmentsCumulativeBySnapshotDay(
   return output
 }
 
+function resolveLastContactDayColumn(mapping, headers) {
+  const mappedColumn = String(mapping?.lastContactDay ?? '').trim()
+  if (mappedColumn) {
+    return mappedColumn
+  }
+
+  return findHeaderByAliases(headers, FIELD_ALIASES.lastContactDay)
+}
+
+function countContactedProvidersByLastContactDay(payloadRows, payloadMapping, contactStage, snapshotDayKey, headers) {
+  if (
+    !Array.isArray(payloadRows) ||
+    !payloadRows.length ||
+    !payloadMapping ||
+    !payloadMapping.stage ||
+    !hasValue(contactStage) ||
+    !isValidDayKey(snapshotDayKey)
+  ) {
+    return null
+  }
+
+  const normalizedContactStage = normalizeText(contactStage)
+  if (!normalizedContactStage) {
+    return null
+  }
+
+  const lastContactColumn = resolveLastContactDayColumn(payloadMapping, headers)
+  if (!lastContactColumn) {
+    return null
+  }
+
+  const targetBucketKey = `0:${snapshotDayKey}`
+  const defaultYear = Number(snapshotDayKey.slice(0, 4))
+  const contactedProviderSet = new Set()
+
+  payloadRows.forEach((row, rowIndex) => {
+    const projectScope = resolveProjectScopeForRow(row, payloadMapping)
+    if (!projectScope.included) {
+      return
+    }
+
+    if (!hasValue(row[payloadMapping.stage])) {
+      return
+    }
+
+    if (normalizeText(row[payloadMapping.stage]) !== normalizedContactStage) {
+      return
+    }
+
+    if (!hasValue(row[lastContactColumn])) {
+      return
+    }
+
+    const dayBuckets = parseTrainingDayBuckets(row[lastContactColumn], defaultYear)
+    const matchesSnapshotDay = dayBuckets.some(({ bucketKey }) => bucketKey === targetBucketKey)
+    if (!matchesSnapshotDay) {
+      return
+    }
+
+    if (payloadMapping.providerId && hasValue(row[payloadMapping.providerId])) {
+      contactedProviderSet.add(String(row[payloadMapping.providerId]).trim())
+      return
+    }
+
+    contactedProviderSet.add(`__ROW__${rowIndex}`)
+  })
+
+  return contactedProviderSet.size
+}
+
+function buildContactedProvidersByLastContactDayFromLiveRows(
+  rows,
+  mapping,
+  headers,
+  contactStage,
+  snapshotDayKeys,
+  officialProviderIdSet,
+) {
+  const validSnapshotDayKeys = Array.isArray(snapshotDayKeys)
+    ? snapshotDayKeys
+        .map((dayKey) => String(dayKey ?? ''))
+        .filter((dayKey) => isValidDayKey(dayKey))
+        .sort((a, b) => a.localeCompare(b))
+    : []
+
+  if (
+    !Array.isArray(rows) ||
+    !rows.length ||
+    !mapping?.stage ||
+    !hasValue(contactStage) ||
+    !validSnapshotDayKeys.length
+  ) {
+    return {}
+  }
+
+  const normalizedContactStage = normalizeText(contactStage)
+  if (!normalizedContactStage) {
+    return {}
+  }
+
+  const lastContactColumn = resolveLastContactDayColumn(mapping, headers)
+  if (!lastContactColumn) {
+    return {}
+  }
+
+  const validSnapshotDayKeySet = new Set(validSnapshotDayKeys)
+  const defaultYear = Number(validSnapshotDayKeys[validSnapshotDayKeys.length - 1].slice(0, 4))
+  const providersByDay = new Map()
+
+  rows.forEach((row, rowIndex) => {
+    const projectScope = resolveProjectScopeForRow(row, mapping)
+    if (!projectScope.included) {
+      return
+    }
+
+    const rawProviderId =
+      mapping.providerId && hasValue(row[mapping.providerId])
+        ? String(row[mapping.providerId]).trim()
+        : ''
+    if (rawProviderId && officialProviderIdSet?.size && !officialProviderIdSet.has(rawProviderId)) {
+      return
+    }
+
+    if (!hasValue(row[mapping.stage])) {
+      return
+    }
+
+    if (normalizeText(row[mapping.stage]) !== normalizedContactStage) {
+      return
+    }
+
+    if (!hasValue(row[lastContactColumn])) {
+      return
+    }
+
+    const providerKey = rawProviderId || `__ROW__${rowIndex}`
+    const dayBuckets = parseTrainingDayBuckets(row[lastContactColumn], defaultYear)
+    dayBuckets.forEach(({ bucketKey }) => {
+      const dayKey = String(bucketKey).startsWith('0:') ? String(bucketKey).slice(2) : ''
+      if (!validSnapshotDayKeySet.has(dayKey)) {
+        return
+      }
+
+      if (!providersByDay.has(dayKey)) {
+        providersByDay.set(dayKey, new Set())
+      }
+
+      providersByDay.get(dayKey).add(providerKey)
+    })
+  })
+
+  const output = {}
+  providersByDay.forEach((providerSet, dayKey) => {
+    output[dayKey] = providerSet.size
+  })
+  return output
+}
+
 function ExcelDashboardLoader() {
   const xlsxRef = useRef(null)
   const workbookRef = useRef(null)
@@ -2554,6 +2713,7 @@ function ExcelDashboardLoader() {
   const [previousDataProfile, setPreviousDataProfile] = useState(null)
   const [questionAnswers, setQuestionAnswers] = useState({})
   const [dailyHistorySnapshots, setDailyHistorySnapshots] = useState([])
+  const [historyContactedByLastContactDay, setHistoryContactedByLastContactDay] = useState({})
   const [groupComparisonMetrics, setGroupComparisonMetrics] = useState(null)
   const [officialProviderUniverseIds, setOfficialProviderUniverseIds] = useState([])
   const currentDataProfileRef = useRef(null)
@@ -2852,6 +3012,63 @@ function ExcelDashboardLoader() {
     }
   }, [dailyHistorySnapshots])
 
+  useEffect(() => {
+    let isCancelled = false
+
+    const loadHistoryContactedByLastContactDay = async () => {
+      const snapshotsWithPayload = [...dailyHistorySnapshots]
+        .filter((snapshot) => snapshot.hasPayload)
+        .sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+
+      if (!snapshotsWithPayload.length) {
+        setHistoryContactedByLastContactDay({})
+        return
+      }
+
+      const dailyCountByDayKey = {}
+
+      await Promise.all(
+        snapshotsWithPayload.map(async (snapshot) => {
+          try {
+            let payload = comparisonPayloadCacheRef.current.get(snapshot.dayKey)
+            if (!payload) {
+              payload = await fetchDashboardPayloadByDayKey(snapshot.dayKey)
+              if (isCancelled) {
+                return
+              }
+
+              comparisonPayloadCacheRef.current.set(snapshot.dayKey, payload)
+            }
+
+            const dailyContactedCount = countContactedProvidersByLastContactDay(
+              payload.rows,
+              payload.mapping,
+              payload.contactStage,
+              snapshot.dayKey,
+              payload.headers,
+            )
+
+            if (Number.isFinite(dailyContactedCount)) {
+              dailyCountByDayKey[snapshot.dayKey] = dailyContactedCount
+            }
+          } catch {
+            // Ignora dias sin payload valido o sin columna de fecha de ultimo contacto.
+          }
+        }),
+      )
+
+      if (!isCancelled) {
+        setHistoryContactedByLastContactDay(dailyCountByDayKey)
+      }
+    }
+
+    void loadHistoryContactedByLastContactDay()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [dailyHistorySnapshots])
+
   const savedSnapshotDayKeySet = useMemo(
     () => new Set(dailyHistorySnapshots.map((snapshot) => snapshot.dayKey)),
     [dailyHistorySnapshots],
@@ -2937,6 +3154,27 @@ function ExcelDashboardLoader() {
 
     return universe
   }, [mapping, officialProviderUniverseIds, rows, snapshotDayKey])
+
+  const liveContactedByLastContactDay = useMemo(
+    () =>
+      buildContactedProvidersByLastContactDayFromLiveRows(
+        rows,
+        mapping,
+        headers,
+        contactStage,
+        dailyHistorySnapshots.map((snapshot) => snapshot.dayKey),
+        effectiveOfficialProviderIdSet,
+      ),
+    [contactStage, dailyHistorySnapshots, effectiveOfficialProviderIdSet, headers, mapping, rows],
+  )
+
+  const historyContactedDeltaByDay = useMemo(
+    () => ({
+      ...historyContactedByLastContactDay,
+      ...liveContactedByLastContactDay,
+    }),
+    [historyContactedByLastContactDay, liveContactedByLastContactDay],
+  )
 
   const previousSnapshotWithPayload = useMemo(() => {
     if (!isValidDayKey(snapshotDayKey)) {
@@ -3841,6 +4079,7 @@ function ExcelDashboardLoader() {
             <EvolutionHistoryCard
               snapshots={dailyHistorySnapshots}
               citationCumulativeBySnapshotDay={citationCumulativeBySnapshotDay}
+              contactedByLastContactByDay={historyContactedDeltaByDay}
               selectedDayKey={snapshotDayKey}
               onClearHistory={handleClearDailyHistory}
               onExportHistoryCsv={handleExportDailyHistoryCsv}
