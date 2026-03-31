@@ -2338,6 +2338,17 @@ function buildCitationAnalysis(
 
   if (mapping.trainingDay) {
     scopedRowsWithProviderKey.forEach(({ row, providerKey }) => {
+      if (mapping.stage && normalizedTrainedStage) {
+        if (!hasValue(row[mapping.stage])) {
+          return
+        }
+
+        const stageValue = normalizeText(row[mapping.stage])
+        if (stageValue !== normalizedTrainedStage) {
+          return
+        }
+      }
+
       if (!hasValue(row[mapping.trainingDay])) {
         return
       }

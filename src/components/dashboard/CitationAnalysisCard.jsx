@@ -51,7 +51,6 @@ function CitationList({
 
 function CitationTrainingDayBars({ title, rows, total, totalLabel = 'Total' }) {
   const maxCount = Math.max(...rows.map((row) => row.count), 1)
-  const rowsTotal = rows.reduce((accumulator, row) => accumulator + row.count, 0)
 
   return (
     <section className="citation-analysis-card__section citation-analysis-card__section--bars">
@@ -83,8 +82,8 @@ function CitationTrainingDayBars({ title, rows, total, totalLabel = 'Total' }) {
           <div className="citation-analysis-card__row citation-analysis-card__row--total">
             <span>{totalLabel}</span>
             <div className="citation-analysis-card__metric">
-              <strong>{rowsTotal}</strong>
-              <small>{total ? ((rowsTotal / total) * 100).toFixed(1) : '0.0'}%</small>
+              <strong>{total}</strong>
+              <small>{total ? '100.0' : '0.0'}%</small>
             </div>
           </div>
         </div>
@@ -149,8 +148,8 @@ function CitationAnalysisCard({ data }) {
         <CitationTrainingDayBars
           title="Capacitados por dia (Dia de Capacitacion)"
           rows={data.byTrainingDay}
-          total={data.totalTrainingAttendances}
-          totalLabel="Total registros"
+          total={data.trainedByTrainingDay}
+          totalLabel="Total proveedores con dia"
         />
       </div>
     </article>
