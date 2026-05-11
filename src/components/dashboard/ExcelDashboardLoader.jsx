@@ -11,8 +11,11 @@ const COLOR_PALETTE = ['#2563eb', '#0ea5e9', '#14b8a6', '#22c55e', '#f59e0b', '#
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '')
   .trim()
   .replace(/\/+$/, '')
-const STREAK_API_FALLBACK_BASE_URL = 'https://dashboardabastible.onrender.com'
-const DAILY_HISTORY_API_FALLBACK_BASE_URL = 'https://dashboardabastible.onrender.com'
+const API_FALLBACK_BASE_URL = String(import.meta.env.VITE_API_FALLBACK_BASE_URL ?? '')
+  .trim()
+  .replace(/\/+$/, '')
+const STREAK_API_FALLBACK_BASE_URL = API_FALLBACK_BASE_URL
+const DAILY_HISTORY_API_FALLBACK_BASE_URL = API_FALLBACK_BASE_URL
 const DAILY_HISTORY_API_PATH = `${API_BASE_URL}/api/daily-history`
 const DAILY_HISTORY_API_FALLBACK_PATH = `${DAILY_HISTORY_API_FALLBACK_BASE_URL}/api/daily-history`
 const STREAK_PIPELINES_API_PATH = `${API_BASE_URL}/api/streak/pipelines`
@@ -207,6 +210,7 @@ function inferProjectGroupNumber(rawGroupLabel) {
     { pattern: /\bseptimo\s+grupo\b|\b7mo\s+grupo\b|\bgrupo\s+7\b/, number: 7 },
     { pattern: /\boctavo\s+grupo\b|\b8vo\s+grupo\b|\bgrupo\s+8\b/, number: 8 },
     { pattern: /\bnoveno\s+grupo\b|\b9no\s+grupo\b|\bgrupo\s+9\b/, number: 9 },
+    { pattern: /\bdecimo\s+grupo\b|\b10mo\s+grupo\b|\bgrupo\s+10\b/, number: 10 },
   ]
 
   const explicitMatch = explicitPatterns.find(({ pattern }) => pattern.test(normalized))
@@ -215,14 +219,14 @@ function inferProjectGroupNumber(rawGroupLabel) {
   }
 
   const numericMatch =
-    normalized.match(/\b([1-9])\s*(?:er|do|to|mo|vo|no)?\s+grupo\b/) ??
-    normalized.match(/\bgrupo\s+([1-9])\b/)
+    normalized.match(/\b(\d+)\s*(?:er|do|to|mo|vo|no)?\s+grupo\b/) ??
+    normalized.match(/\bgrupo\s+(\d+)\b/)
   if (!numericMatch) {
     return null
   }
 
   const parsed = Number(numericMatch[1])
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 9) {
+  if (!Number.isInteger(parsed) || parsed < 1) {
     return null
   }
 
