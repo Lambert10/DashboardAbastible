@@ -1428,7 +1428,6 @@ function validateSnapshotChronology(snapshots, snapshotCandidate) {
   const monotonicFields = [
     { key: 'contactedProviders', label: 'Contactados' },
     { key: 'trainedProviders', label: 'Capacitados' },
-    { key: 'rescuedProviders', label: 'Rescatados' },
   ]
 
   if (snapshotCandidate.contactedProviders < snapshotCandidate.trainedProviders) {
